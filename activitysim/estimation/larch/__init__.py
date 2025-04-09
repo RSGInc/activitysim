@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import larch as lx
 from packaging.version import Version
 
 from .cdap import *
@@ -13,11 +12,20 @@ from .scheduling import *
 from .simple_simulate import *
 from .stop_frequency import *
 
+try:
+    import larch as lx
+except ImportError:
+    lx = None
+
+
 # require larch version 6.0.0 or later
 if Version(larch.__version__) < Version("6.0.0"):
-    raise ImportError(
-        f"activitysim estimation mode requires larch version 6.0.0 or later. Found {larch.__version__}"
-    )
+    # when installed from source without a full git history including version
+    # tags, sometimes development versions of larch default to version 0.1.devX
+    if not larch.__version__.startswith("0.1.dev"):
+        raise ImportError(
+            f"activitysim estimation mode requires larch version 6.0.0 or later. Found {larch.__version__}"
+        )
 
 
 def component_model(name, *args, **kwargs):
