@@ -70,7 +70,7 @@ def model_spec():
 def add_canonical_dirs(configs_dir_name):
     state = workflow.State()
     configs_dir = os.path.join(os.path.dirname(__file__), f"{configs_dir_name}")
-    data_dir = os.path.join(os.path.dirname(__file__), f"data")
+    data_dir = os.path.join(os.path.dirname(__file__), "data")
     output_dir = os.path.join(os.path.dirname(__file__), "output")
     state.initialize_filesystem(
         working_dir=os.path.dirname(__file__),
@@ -233,20 +233,18 @@ def test_run_trip_scheduling_choice(model_spec, tours, skims, locals_dict):
     state = workflow.State.make_temp()
 
     # Define model settings for this test.
-    # The settings for this model requires a filename for the spec, but in this test we 
+    # The settings for this model requires a filename for the spec, but in this test we
     # are passing the spec dataframe directly, so the filename is just a placeholder.
     # In non-testing use cases, the SPEC would actually be read from the yaml file
     # instead of being passed directly as a dataframe.
-    model_settings = tsc.TripSchedulingChoiceSettings(**{
-        'SPEC': 'placeholder.csv',
-        'compute_settings': {
-            'protect_columns': [
-                'origin',
-                'destination',
-                'schedule_id'
-            ]
+    model_settings = tsc.TripSchedulingChoiceSettings(
+        **{
+            "SPEC": "placeholder.csv",
+            "compute_settings": {
+                "protect_columns": ["origin", "destination", "schedule_id"]
+            },
         }
-    })
+    )
 
     # As is common in ActivitySim the component will modify the input dataframe in-place.
     # For testing we make a copy of the input tours to compare against after running the model.
@@ -289,4 +287,3 @@ def test_run_trip_scheduling_choice(model_spec, tours, skims, locals_dict):
 
     # check that tours with no inbound stops have zero inbound duration
     assert out_tours[tsc.IB_DURATION].mask(in_tours[tsc.HAS_IB_STOPS], 0).sum() == 0
-
