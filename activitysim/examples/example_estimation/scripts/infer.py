@@ -26,24 +26,25 @@ logger.addHandler(ch)
 
 CONSTANTS = {}
 
-SURVEY_TOUR_ID = "survey_tour_id"
-SURVEY_PARENT_TOUR_ID = "survey_parent_tour_id"
-SURVEY_PARTICIPANT_ID = "survey_participant_id"
-SURVEY_TRIP_ID = "survey_trip_id"
+SURVEY_TOUR_ID = "tour_id"
+SURVEY_PARENT_TOUR_ID = "parent_tour_id"
+SURVEY_PARTICIPANT_ID = "participant_id"
+SURVEY_TRIP_ID = "linked_trip_id"
 ASIM_TOUR_ID = "tour_id"
 ASIM_PARENT_TOUR_ID = "parent_tour_id"
 ASIM_TRIP_ID = "trip_id"
+PNUM = "person_num"
 
 SCHOOL_ESCORT_TIME_WINDOW = 1
 
 ASIM_PARTICIPANT_ID = "participant_id"
 
 survey_tables = {
-    "households": {"file_name": "survey_households.csv", "index": "household_id"},
-    "persons": {"file_name": "survey_persons.csv", "index": "person_id"},
-    "tours": {"file_name": "survey_tours.csv"},
-    "joint_tour_participants": {"file_name": "survey_joint_tour_participants.csv"},
-    "trips": {"file_name": "survey_trips.csv"},
+    "households": {"file_name": "household.csv", "index": "household_id"},
+    "persons": {"file_name": "person.csv", "index": "person_id"},
+    "tours": {"file_name": "tour.csv"},
+    "joint_tour_participants": {"file_name": "joint_tour_participants.csv"},
+    "trips": {"file_name": "trip_linked.csv"},
 }
 
 outputs = {
@@ -170,7 +171,7 @@ def infer_non_mandatory_tour_frequency(configs_dir, persons, tours, pe_tour_ids)
     # they are created as part of the school escorting model instead
     tours = tours[
         (tours.tour_category == "non_mandatory")
-        & ~tours.survey_tour_id.isin(pe_tour_ids)
+        & ~tours[SURVEY_TOUR_ID].isin(pe_tour_ids)
     ]
 
     alts = read_alts()
@@ -522,7 +523,7 @@ def determine_school_escorting_alt_chauf_columns(row, direction, tours):
     # need to ensure chauffeur tour exists
     chauf_tours = tours[
         tours.person_id == row[f"{direction}_chauf_person_id"]
-    ].set_index("survey_tour_id")
+    ].set_index(SURVEY_TOUR_ID)
     # starting with looking for work tours for ride_share
     if row[f"{direction}_escort_type"] == "ride_share":
         if direction == "out":
@@ -610,8 +611,10 @@ def infer_school_escorting(configs_dir, households, persons, tours):
     is_student, age, and cdap_activity for numbering escortees and chauffeurs
     """
     # reading in necessary school escorting configs
-    with open(os.path.join(configs_dir, "school_escorting.yaml")) as stream:
-        se_model_settings = yaml.load(stream, Loader=yaml.SafeLoader)
+    se_model_settings = school_escorting.SchoolEscortSettings.read_settings_file(
+        state.filesystem,
+        "school_escorting.yaml",
+    )
     se_alts = pd.read_csv(os.path.join(configs_dir, "school_escorting_alts.csv"))
 
     # numbering children and chauffeurs using the logic in the school escorting model
@@ -664,23 +667,23 @@ def infer_school_escorting(configs_dir, households, persons, tours):
     )
 
     # Setting bundle number by ordering the chauffeur tours by time
-    out_chauf_tours = tours[tours.survey_tour_id.isin(se_tours.out_chauf_tour_id)]
+    out_chauf_tours = tours[tours[SURVEY_TOUR_ID].isin(se_tours.out_chauf_tour_id)]
     out_chauf_tours["bundle_num"] = (
         out_chauf_tours.sort_values(by=["person_id", "start"])
         .groupby("person_id")["start"]
         .cumcount()
         + 1
     )
-    out_chauf_tour_id_to_bundle_map = out_chauf_tours.set_index("survey_tour_id")[
+    out_chauf_tour_id_to_bundle_map = out_chauf_tours.set_index(SURVEY_TOUR_ID)[
         "bundle_num"
     ].to_dict()
     inb_chauf_tours = tours[
-        tours.survey_tour_id.isin(se_tours.inb_chauf_tour_id)
+        tours[SURVEY_TOUR_ID].isin(se_tours.inb_chauf_tour_id)
         &
         # do not allow escort tours to be used for both outbound and inbound school escorting (since activitysim does not allow)
         # removing this contraint would cause tours to be created in ActivitySim that do not exist in the model
         ~(
-            tours.survey_tour_id.isin(out_chauf_tours.survey_tour_id)
+            tours[SURVEY_TOUR_ID].isin(out_chauf_tours[SURVEY_TOUR_ID])
             & (tours.tour_type == "escort")
         )
     ]
@@ -690,7 +693,7 @@ def infer_school_escorting(configs_dir, households, persons, tours):
         .cumcount()
         + 1
     )
-    inb_chauf_tour_id_to_bundle_map = inb_chauf_tours.set_index("survey_tour_id")[
+    inb_chauf_tour_id_to_bundle_map = inb_chauf_tours.set_index(SURVEY_TOUR_ID)[
         "bundle_num"
     ].to_dict()
 
@@ -854,7 +857,7 @@ def patch_tour_ids(
 
     # joint tours tour_id was assigned based on person_id of the first person in household (PNUM == 1)
     # because the actual point person forthe tour is only identified later in joint_tour_participants)
-    temp_point_persons = persons.loc[persons.PNUM == 1, ["household_id"]]
+    temp_point_persons = persons.loc[persons[PNUM] == 1, ["household_id"]]
     temp_point_persons["person_id"] = temp_point_persons.index
     temp_point_persons.set_index("household_id", inplace=True)
 
@@ -881,7 +884,7 @@ def patch_tour_ids(
     # participant_id is formed by combining tour_id and participant pern.PNUM
     # pathological knowledge, but awkward to conflate with joint_tour_participation.py logic
     participant_pnum = reindex(
-        persons.PNUM, patched_joint_tour_participants["person_id"]
+        persons[PNUM], patched_joint_tour_participants["person_id"]
     )
     patched_joint_tour_participants[ASIM_PARTICIPANT_ID] = (
         patched_joint_tour_participants[ASIM_TOUR_ID] * cid.MAX_PARTICIPANT_PNUM
@@ -901,8 +904,8 @@ def patch_tour_ids(
     pure_school_escort_tours = set_tour_index(
         state,
         tours[
-            tours.survey_tour_id.isin(pe_tour_ids)
-            & ~tours.survey_tour_id.isin(pe_tour_ids)
+            tours[SURVEY_TOUR_ID].isin(pe_tour_ids)
+            & ~tours[SURVEY_TOUR_ID].isin(pe_tour_ids)
         ],
         parent_tour_num_col=None,
         is_joint=False,
@@ -1307,7 +1310,9 @@ def infer(state: workflow.State, configs_dir, input_dir, output_dir):
 # python infer.py data
 if __name__ == "__main__":
     args = sys.argv[1:]
-    assert len(args) == 3, "usage: python infer.py <data_dir> <configs_dir> <output_dir>"
+    assert (
+        len(args) == 3
+    ), "usage: python infer.py <data_dir> <configs_dir> <output_dir>"
 
     data_dir = args[0]
     configs_dir = args[1]
