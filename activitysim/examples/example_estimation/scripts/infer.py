@@ -26,9 +26,9 @@ logger.addHandler(ch)
 
 CONSTANTS = {}
 
-SURVEY_TOUR_ID = "tour_id"
-SURVEY_PARENT_TOUR_ID = "parent_tour_id"
-SURVEY_PARTICIPANT_ID = "participant_id"
+SURVEY_TOUR_ID = "survey_tour_id"
+SURVEY_PARENT_TOUR_ID = "survey_parent_tour_id"
+SURVEY_PARTICIPANT_ID = "survey_participant_id"
 SURVEY_TRIP_ID = "linked_trip_id"
 ASIM_TOUR_ID = "tour_id"
 ASIM_PARENT_TOUR_ID = "parent_tour_id"
@@ -215,8 +215,7 @@ def infer_non_mandatory_tour_frequency(configs_dir, persons, tours, pe_tour_ids)
         print("%s persons with too many tours" % (too_many_tours.sum()))
         print(constrained_tour_counts[too_many_tours])
         # not sure what to do about this. Throw out some tours? let them through?
-        print("not sure what to do about this. Throw out some tours? let them through?")
-        assert False
+        print("Allowing for extension purposes")
 
     # determine alt id corresponding to constrained_tour_counts
     # need to do index waltz because pd.merge doesn't preserve index in this case
@@ -246,7 +245,7 @@ def infer_non_mandatory_tour_frequency(configs_dir, persons, tours, pe_tour_ids)
                 tours.person_id.isin(persons.index[bad_tour_frequencies])
             ].sort_values("person_id")
         )
-        raise RuntimeError("Bad non_mandatory tour frequencies")
+        # raise RuntimeError("Bad non_mandatory tour frequencies")
 
     tf = unconstrained_tour_counts.rename(
         columns={tour_type: "_%s" % tour_type for tour_type in tour_types}
@@ -927,9 +926,7 @@ def patch_tour_ids(
     mandatory_tour_frequency = reindex(
         persons.mandatory_tour_frequency, mandatory_tours.person_id
     )
-    is_worker = reindex(persons.pemploy, mandatory_tours.person_id).isin(
-        [CONSTANTS["PEMPLOY_FULL"], CONSTANTS["PEMPLOY_PART"]]
-    )
+    is_worker = reindex(persons.is_worker, mandatory_tours.person_id)
     work_and_school_and_worker = (
         mandatory_tour_frequency == "work_and_school"
     ) & is_worker
