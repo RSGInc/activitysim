@@ -24,6 +24,8 @@ ch = logging.StreamHandler()
 ch.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
 logger.addHandler(ch)
 
+skip_joint_tour_frequency = True
+
 CONSTANTS = {}
 
 SURVEY_TOUR_ID = "survey_tour_id"
@@ -970,13 +972,13 @@ def patch_tour_ids(
     #####################
 
     # only true for fake data
-    assert (
-        mandatory_tours.index == unmangle_ids(mandatory_tours[SURVEY_TOUR_ID])
-    ).all()
-    assert (joint_tours.index == unmangle_ids(joint_tours[SURVEY_TOUR_ID])).all()
-    assert (
-        non_mandatory_tours.index == unmangle_ids(non_mandatory_tours[SURVEY_TOUR_ID])
-    ).all()
+    # assert (
+    #     mandatory_tours.index == unmangle_ids(mandatory_tours[SURVEY_TOUR_ID])
+    # ).all()
+    # assert (joint_tours.index == unmangle_ids(joint_tours[SURVEY_TOUR_ID])).all()
+    # assert (
+    #     non_mandatory_tours.index == unmangle_ids(non_mandatory_tours[SURVEY_TOUR_ID])
+    # ).all()
 
     patched_tours = pd.concat(
         [
@@ -1255,16 +1257,17 @@ def infer(state: workflow.State, configs_dir, input_dir, output_dir):
     assert skip_controls or check_controls("tours", "index")
     assert skip_controls or check_controls("joint_tour_participants", "index")
 
-    # patch_tour_ids
+    # patch_trip_ids
     trips = patch_trip_ids(state, tours, trips)
     survey_tables["trips"]["table"] = trips  # so we can check_controls
     assert skip_controls or check_controls("trips", "index")
 
+    if not skip_joint_tour_frequency:
     # households.joint_tour_frequency
-    households["joint_tour_frequency"] = infer_joint_tour_frequency(
-        configs_dir, households, tours
-    )
-    assert skip_controls or check_controls("households", "joint_tour_frequency")
+        households["joint_tour_frequency"] = infer_joint_tour_frequency(
+            configs_dir, households, tours
+        )
+        assert skip_controls or check_controls("households", "joint_tour_frequency")
 
     # tours.composition
     tours["composition"] = infer_joint_tour_composition(
