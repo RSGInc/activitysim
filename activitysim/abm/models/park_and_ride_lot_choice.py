@@ -183,7 +183,8 @@ def run_park_and_ride_lot_choice(
     spec = state.filesystem.read_model_spec(file_name=model_settings.SPEC)
     coefficients = state.filesystem.read_model_coefficients(model_settings)
     model_spec = simulate.eval_coefficients(state, spec, coefficients, estimator)
-    locals_dict = model_settings.CONSTANTS
+    locals_dict = state.get_global_constants()
+    locals_dict.update(model_settings.CONSTANTS)
 
     pnr_alts = land_use[land_use[model_settings.LANDUSE_PNR_SPACES_COLUMN] > 0]
     pnr_alts["pnr_zone_id"] = pnr_alts.index.values
