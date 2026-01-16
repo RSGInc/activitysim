@@ -1263,7 +1263,7 @@ def infer(state: workflow.State, configs_dir, input_dir, output_dir):
     assert skip_controls or check_controls("trips", "index")
 
     if not skip_joint_tour_frequency:
-    # households.joint_tour_frequency
+        # households.joint_tour_frequency
         households["joint_tour_frequency"] = infer_joint_tour_frequency(
             configs_dir, households, tours
         )
