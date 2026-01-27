@@ -196,7 +196,7 @@ def read_from_table_info(table_info: InputTable, state):
             if canonical_index_col:
                 # we expect canonical indexes to be integer-valued
                 assert (
-                    df[index_col] == df[index_col].astype(int)
+                    df[index_col] == df[index_col].astype(np.int64)
                 ).all(), f"Index col '{index_col}' has non-integer values"
                 df[index_col] = df[index_col].astype(np.int64)
             df.set_index(index_col, inplace=True)
