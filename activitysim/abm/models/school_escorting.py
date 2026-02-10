@@ -247,7 +247,7 @@ def create_school_escorting_bundles_table(choosers, tours, stage):
         )
 
     # each chauffeur option has ride share or pure escort
-    bundles["chauf_num"] = np.ceil(bundles["chauf_type_num"].div(2)).astype(int)
+    bundles["chauf_num"] = np.ceil(bundles["chauf_type_num"].div(2)).astype("int64")
 
     # getting bundle chauffeur id based on the chauffeur num
     bundles["chauf_id"] = -1
@@ -257,7 +257,7 @@ def create_school_escorting_bundles_table(choosers, tours, stage):
             choosers["chauf_id" + str(i)],
             bundles["chauf_id"],
         )
-    bundles["chauf_id"] = bundles["chauf_id"].astype(int)
+    bundles["chauf_id"] = bundles["chauf_id"].astype("int64")
     assert (
         bundles["chauf_id"] > 0
     ).all(), "Invalid chauf_id's for school escort bundles!"
