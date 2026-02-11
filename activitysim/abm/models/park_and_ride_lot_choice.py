@@ -13,6 +13,7 @@ from activitysim.core import (
     estimation,
     simulate,
     tracing,
+    util,
     workflow,
 )
 from activitysim.core.configuration.logit import (
@@ -310,6 +311,15 @@ def run_park_and_ride_lot_choice(
         model_settings=model_settings,
         trace_label=trace_label,
         preprocessor_setting_name="alts_preprocessor",
+    )
+
+    # Trim alts to only columns in by the spec to reduce the size of the interaction df
+    pnr_alts = util.drop_unused_columns(
+        pnr_alts,
+        model_spec,
+        locals_dict,
+        custom_chooser=None,
+        sharrow_enabled=state.settings.sharrow,
     )
 
     if estimator:
