@@ -88,7 +88,7 @@ def _compute_logsums(
             mandatory=False,
         )
         choosers = alt_tdd.join(tours_merged, how="left", rsuffix="_chooser")
-        logger.info(
+        logger.debug(
             f"{trace_label} compute_logsums for {choosers.shape[0]} choosers {alt_tdd.shape[0]} alts"
         )
 
@@ -157,7 +157,7 @@ def _compute_logsums(
 
         if preprocessor_settings:
             simulate.set_skim_wrapper_targets(choosers, skims)
-            logger.info(
+            logger.debug(
                 f"{trace_label} start preprocessing prior to compute_logsums for {choosers.shape[0]} choosers {alt_tdd.shape[0]} alts"
             )
             expressions.assign_columns(
@@ -167,7 +167,7 @@ def _compute_logsums(
                 locals_dict=locals_dict,
                 trace_label=trace_label,
             )
-            logger.info(
+            logger.debug(
                 f"{trace_label} end preprocessing prior to compute_logsums for {choosers.shape[0]} choosers {alt_tdd.shape[0]} alts"
             )
 
@@ -387,7 +387,7 @@ def compute_tour_scheduling_logsums(
         )
         chunk_sizer.log_df(trace_label, "deduped_alt_tdds", deduped_alt_tdds)
 
-        logger.info(
+        logger.debug(
             f"{trace_label} compute_logsums "
             f"deduped_alt_tdds reduced number of rows by "
             f"{round(100 * (len(alt_tdd) - len(deduped_alt_tdds)) / len(alt_tdd), 2)}% "
@@ -716,7 +716,7 @@ def _schedule_tours(
 
     """
 
-    logger.info(
+    logger.debug(
         "%s schedule_tours running %d tour choices" % (tour_trace_label, len(tours))
     )
 
@@ -865,7 +865,7 @@ def schedule_tours(
         logger.info("schedule_tours %s tours not monotonic_increasing - sorting df")
         tours = tours.sort_index()
 
-    logger.info(
+    logger.debug(
         "%s schedule_tours running %d tour choices" % (tour_trace_label, len(tours))
     )
 

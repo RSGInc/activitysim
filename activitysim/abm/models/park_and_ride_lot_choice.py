@@ -13,6 +13,7 @@ from activitysim.core import (
     estimation,
     simulate,
     tracing,
+    util,
     workflow,
 )
 from activitysim.core.configuration.logit import (
@@ -31,6 +32,10 @@ class ParkAndRideLotChoiceSettings(LogitComponentSettings, extra="forbid"):
     Settings for the `external_identification` component.
     """
 
+    CHOOSER_FILTER_EXPR: str | None = None
+    """An optional expression to filter the chooser table before simulating the model.  
+    Applied after preprocessing as a .query() expression."""
+
     LANDUSE_PNR_SPACES_COLUMN: str
     """lists the column name in the land use table that contains the number of park-and-ride spaces available in the zone"""
 
@@ -40,8 +45,7 @@ class ParkAndRideLotChoiceSettings(LogitComponentSettings, extra="forbid"):
 
     LANDUSE_COL_FOR_PNR_ELIGIBLE_DEST: str | None = None
     """The column name in the land use table that indicates whether a destination is eligible for park-and-ride.
-    If supplied, then TRANSIT_SKIMS_FOR_ELIGIBILITY is not used.
-    """
+    If supplied, then TRANSIT_SKIMS_FOR_ELIGIBILITY is not used."""
 
     explicit_chunk: float = 0
     """
@@ -144,7 +148,7 @@ def filter_chooser_to_transit_accessible_destinations(
     else:
         filtered_choosers = choosers
 
-    logger.info(
+    logger.debug(
         f"Preparing choosers for park-and-ride lot choice model:\n"
         f" Filtered tours to {len(filtered_choosers)} with transit access to their destination.\n"
         f" Total number of tours: {len(choosers)}.\n"
@@ -153,6 +157,16 @@ def filter_chooser_to_transit_accessible_destinations(
     )
 
     return filtered_choosers
+
+
+def return_no_choices(state, choosers: pd.DataFrame, original_index=None) -> pd.Series:
+    logger.debug(
+        "No choosers with transit accessible destinations found. Returning -1 as park-and-ride lot choice."
+    )
+    # need to drop rng channel that we created before trn_accessible_choosers
+    state.get_rn_generator().drop_channel("pnr_lot_choice")
+    index = choosers.index if original_index is None else original_index
+    return pd.Series(data=-1, index=index)
 
 
 def run_park_and_ride_lot_choice(
@@ -183,7 +197,8 @@ def run_park_and_ride_lot_choice(
     spec = state.filesystem.read_model_spec(file_name=model_settings.SPEC)
     coefficients = state.filesystem.read_model_coefficients(model_settings)
     model_spec = simulate.eval_coefficients(state, spec, coefficients, estimator)
-    locals_dict = model_settings.CONSTANTS
+    locals_dict = state.get_global_constants()
+    locals_dict.update(model_settings.CONSTANTS)
 
     pnr_alts = land_use[land_use[model_settings.LANDUSE_PNR_SPACES_COLUMN] > 0]
     pnr_alts["pnr_zone_id"] = pnr_alts.index.values
@@ -236,13 +251,7 @@ def run_park_and_ride_lot_choice(
     )
 
     if trn_accessible_choosers.empty:
-        logger.debug(
-            "No choosers with transit accessible destinations found. Returning -1 as park-and-ride lot choice."
-        )
-        # need to drop rng channel that we created before trn_accessible_choosers
-        state.get_rn_generator().drop_channel("pnr_lot_choice")
-        index = choosers.index if original_index is None else original_index
-        return pd.Series(data=-1, index=index)
+        return return_no_choices(state, choosers, original_index)
 
     add_periods = False if "in_period" in trn_accessible_choosers.columns else True
     skims = logsums.setup_skims(
@@ -255,7 +264,7 @@ def run_park_and_ride_lot_choice(
     )
     locals_dict.update(skims)
 
-    if model_settings.preprocessor:
+    if model_settings.preprocessor.TABLES:
         # Need to check whether the table exists in the state.
         # This can happen if you have preprocessor settings that reference tours
         # but the tours table doesn't exist yet because you are calculating logsums.
@@ -283,6 +292,16 @@ def run_park_and_ride_lot_choice(
         trace_label=trace_label,
     )
 
+    # apply optional chooser filter expression
+    trn_accessible_choosers = (
+        trn_accessible_choosers.query(model_settings.CHOOSER_FILTER_EXPR)
+        if model_settings.CHOOSER_FILTER_EXPR
+        else trn_accessible_choosers
+    )
+
+    if trn_accessible_choosers.empty:
+        return return_no_choices(state, choosers, original_index)
+
     # preprocess alternatives
     expressions.annotate_preprocessors(
         state,
@@ -292,6 +311,15 @@ def run_park_and_ride_lot_choice(
         model_settings=model_settings,
         trace_label=trace_label,
         preprocessor_setting_name="alts_preprocessor",
+    )
+
+    # Trim alts to only columns in by the spec to reduce the size of the interaction df
+    pnr_alts = util.drop_unused_columns(
+        pnr_alts,
+        model_spec,
+        locals_dict,
+        custom_chooser=None,
+        sharrow_enabled=state.settings.sharrow,
     )
 
     if estimator:

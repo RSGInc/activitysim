@@ -165,7 +165,7 @@ def write_trip_matrices(
                 zone_index = pd.Series(
                     land_use_taz["_original_TAZ"]
                     .reindex(zone_index)
-                    .fillna(zone_index)
+                    .fillna(zone_index.to_series())
                     .values,
                     index=pd.Index(zone_index, name="TAZ"),
                     name="TAZ",
@@ -196,7 +196,7 @@ def write_trip_matrices(
                 zone_index = pd.Series(
                     land_use_taz["_original_TAZ"]
                     .reindex(zone_index)
-                    .fillna(zone_index)
+                    .fillna(zone_index.to_series())
                     .values,
                     index=pd.Index(zone_index, name="TAZ"),
                     name="TAZ",
