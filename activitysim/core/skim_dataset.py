@@ -958,10 +958,19 @@ def load_skim_dataset_to_shared_memory(state, skim_tag="taz") -> xr.Dataset:
             # requires no realignment (i.e. the land use table and skims match
             # exactly in order and length).
             d_shared_mem = d.shm.to_shared_memory(backing, mode="r", load=False)
+            # Build an extended ignore list that includes any skims that were
+            # dropped as unused, so reload_from_omx_3d doesn't try to load them
+            reload_ignore = list(state.settings.omx_ignore_patterns or [])
+            all_omx_names = set()
+            for f in omx_file_handles:
+                all_omx_names.update(f.list_matrices())
+            dropped_names = all_omx_names - set(d.variables.keys())
+            for name in dropped_names:
+                reload_ignore.append(f"^{re.escape(name)}$")
             sh.dataset.reload_from_omx_3d(
                 d_shared_mem,
                 [str(i) for i in omx_file_paths],
-                ignore=state.settings.omx_ignore_patterns,
+                ignore=reload_ignore,
             )
         for f in omx_file_handles:
             f.close()
