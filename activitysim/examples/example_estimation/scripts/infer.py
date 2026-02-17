@@ -35,7 +35,7 @@ SURVEY_TRIP_ID = "linked_trip_id"
 ASIM_TOUR_ID = "tour_id"
 ASIM_PARENT_TOUR_ID = "parent_tour_id"
 ASIM_TRIP_ID = "trip_id"
-PNUM = "person_num"
+PNUM = "PNUM"
 
 SCHOOL_ESCORT_TIME_WINDOW = 1
 
@@ -993,6 +993,10 @@ def patch_tour_ids(
     assert patched_tours.index.name == ASIM_TOUR_ID
     patched_tours = patched_tours.reset_index()
 
+    tour_id_map = patched_tours.set_index(SURVEY_TOUR_ID)[ASIM_TOUR_ID]
+    for direction in ["out","inb"]:
+        tours[f"{direction}_chauffeur_tour_id"] = tours[f"{direction}_chauffeur_tour_id"].map(tour_id_map).fillna(-1)
+
     del patched_tours["tour_type_num"]
 
     assert ASIM_TOUR_ID in patched_tours
@@ -1211,16 +1215,16 @@ def infer(state: workflow.State, configs_dir, input_dir, output_dir):
     trips = trips.rename(columns={"trip_id": SURVEY_TRIP_ID, "tour_id": SURVEY_TOUR_ID})
 
     # mangle survey tour ids to keep us honest
-    tours[SURVEY_TOUR_ID] = mangle_ids(tours[SURVEY_TOUR_ID])
-    tours[SURVEY_PARENT_TOUR_ID] = mangle_ids(tours[SURVEY_PARENT_TOUR_ID])
-    joint_tour_participants[SURVEY_TOUR_ID] = mangle_ids(
-        joint_tour_participants[SURVEY_TOUR_ID]
-    )
-    joint_tour_participants[SURVEY_PARTICIPANT_ID] = mangle_ids(
-        joint_tour_participants[SURVEY_PARTICIPANT_ID]
-    )
-    trips[SURVEY_TRIP_ID] = mangle_ids(trips[SURVEY_TRIP_ID])
-    trips[SURVEY_TOUR_ID] = mangle_ids(trips[SURVEY_TOUR_ID])
+    # tours[SURVEY_TOUR_ID] = mangle_ids(tours[SURVEY_TOUR_ID])
+    # tours[SURVEY_PARENT_TOUR_ID] = mangle_ids(tours[SURVEY_PARENT_TOUR_ID])
+    # joint_tour_participants[SURVEY_TOUR_ID] = mangle_ids(
+    #     joint_tour_participants[SURVEY_TOUR_ID]
+    # )
+    # joint_tour_participants[SURVEY_PARTICIPANT_ID] = mangle_ids(
+    #     joint_tour_participants[SURVEY_PARTICIPANT_ID]
+    # )
+    # trips[SURVEY_TRIP_ID] = mangle_ids(trips[SURVEY_TRIP_ID])
+    # trips[SURVEY_TOUR_ID] = mangle_ids(trips[SURVEY_TOUR_ID])
 
     # persons.cdap_activity
     persons["cdap_activity"] = infer_cdap_activity(
