@@ -897,7 +897,7 @@ def patch_tour_ids(
 
     non_mandatory_tours = set_tour_index(
         state,
-        tours[tours.tour_category == "non_mandatory"],
+        tours[(tours.tour_category == "non_mandatory") &(~tours[SURVEY_TOUR_ID].isin(pe_tour_ids))],
         parent_tour_num_col=None,
         is_joint=False,
     )
@@ -906,7 +906,6 @@ def patch_tour_ids(
         state,
         tours[
             tours[SURVEY_TOUR_ID].isin(pe_tour_ids)
-            & ~tours[SURVEY_TOUR_ID].isin(pe_tour_ids)
         ],
         parent_tour_num_col=None,
         is_joint=False,
