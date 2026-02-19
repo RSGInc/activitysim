@@ -85,13 +85,13 @@ def determine_escorting_participants(
     )
 
     chaperones["chaperone_num"] = (
-        chaperones.sort_values("chaperone_weight", ascending=False)
+        chaperones.sort_values("chaperone_weight", ascending=False, kind="stable")
         .groupby("household_id")
         .cumcount()
         + 1
     )
     escortees["escortee_num"] = (
-        escortees.sort_values("age", ascending=True).groupby("household_id").cumcount()
+        escortees.sort_values("age", ascending=True, kind="stable").groupby("household_id").cumcount()
         + 1
     )
 
