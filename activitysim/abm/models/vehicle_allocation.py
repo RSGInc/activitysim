@@ -266,7 +266,7 @@ def vehicle_allocation(
         tours_veh_occup_cols.append(tours_veh_occup_col)
 
     if estimator:
-        estimator.write_choices(choices)
+        estimator.write_choices(choices.alt_choice)
         choices = estimator.get_survey_values(
             choices, "households", "vehicle_allocation"
         )
