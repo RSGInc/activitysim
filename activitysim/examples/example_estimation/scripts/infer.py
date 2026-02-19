@@ -994,7 +994,7 @@ def patch_tour_ids(
 
     tour_id_map = patched_tours.set_index(SURVEY_TOUR_ID)[ASIM_TOUR_ID]
     for direction in ["out","inb"]:
-        tours[f"{direction}_chauffeur_tour_id"] = tours[f"{direction}_chauffeur_tour_id"].map(tour_id_map).fillna(-1)
+        patched_tours[f"{direction}_chauffeur_tour_id"] = patched_tours[f"{direction}_chauffeur_tour_id"].map(tour_id_map).fillna(-1)
 
     del patched_tours["tour_type_num"]
 
