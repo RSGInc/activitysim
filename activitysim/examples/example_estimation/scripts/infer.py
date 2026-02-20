@@ -897,16 +897,17 @@ def patch_tour_ids(
 
     non_mandatory_tours = set_tour_index(
         state,
-        tours[(tours.tour_category == "non_mandatory") &(~tours[SURVEY_TOUR_ID].isin(pe_tour_ids))],
+        tours[
+            (tours.tour_category == "non_mandatory")
+            & (~tours[SURVEY_TOUR_ID].isin(pe_tour_ids))
+        ],
         parent_tour_num_col=None,
         is_joint=False,
     )
 
     pure_school_escort_tours = set_tour_index(
         state,
-        tours[
-            tours[SURVEY_TOUR_ID].isin(pe_tour_ids)
-        ],
+        tours[tours[SURVEY_TOUR_ID].isin(pe_tour_ids)],
         parent_tour_num_col=None,
         is_joint=False,
         is_se=True,
@@ -993,8 +994,10 @@ def patch_tour_ids(
     patched_tours = patched_tours.reset_index()
 
     tour_id_map = patched_tours.set_index(SURVEY_TOUR_ID)[ASIM_TOUR_ID]
-    for direction in ["out","inb"]:
-        patched_tours[f"{direction}_chauffeur_tour_id"] = patched_tours[f"{direction}_chauffeur_tour_id"].map(tour_id_map).fillna(-1)
+    for direction in ["out", "inb"]:
+        patched_tours[f"{direction}_chauffeur_tour_id"] = (
+            patched_tours[f"{direction}_chauffeur_tour_id"].map(tour_id_map).fillna(-1)
+        )
 
     del patched_tours["tour_type_num"]
 

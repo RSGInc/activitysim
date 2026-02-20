@@ -268,9 +268,7 @@ def vehicle_allocation(
             # occupancy level, but real life only sees one choice since we
             # observe just one tour occupancy. So, for estimation, we override
             # each choice to be the observed choice.
-            choices = estimator.get_survey_values(
-                choices, "tours", tours_veh_occup_col
-            )
+            choices = estimator.get_survey_values(choices, "tours", tours_veh_occup_col)
 
         tours[tours_veh_occup_col] = choices["choice"]
         tours[tours_veh_occup_col] = tours[tours_veh_occup_col].astype(veh_choice_dtype)

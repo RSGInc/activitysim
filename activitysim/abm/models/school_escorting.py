@@ -91,7 +91,9 @@ def determine_escorting_participants(
         + 1
     )
     escortees["escortee_num"] = (
-        escortees.sort_values("age", ascending=True, kind="stable").groupby("household_id").cumcount()
+        escortees.sort_values("age", ascending=True, kind="stable")
+        .groupby("household_id")
+        .cumcount()
         + 1
     )
 
