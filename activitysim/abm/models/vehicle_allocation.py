@@ -261,15 +261,24 @@ def vehicle_allocation(
 
         # creating a column for choice of each occupancy level
         tours_veh_occup_col = f"vehicle_occup_{occup}"
+
+        if estimator:
+            # this model is a little different than other models in that
+            # ActivitySim will choose a vehicle type alternative for each
+            # occupancy level, but real life only sees one choice since we
+            # observe just one tour occupancy. So, for estimation, we override
+            # each choice to be the observed choice.
+            choices = estimator.get_survey_values(
+                choices, "tours", tours_veh_occup_col
+            )
+
         tours[tours_veh_occup_col] = choices["choice"]
         tours[tours_veh_occup_col] = tours[tours_veh_occup_col].astype(veh_choice_dtype)
         tours_veh_occup_cols.append(tours_veh_occup_col)
 
     if estimator:
+        # just write out the final highest occupancy choice -- is this ok?
         estimator.write_choices(choices.alt_choice)
-        choices = estimator.get_survey_values(
-            choices, "households", "vehicle_allocation"
-        )
         estimator.write_override_choices(choices)
         estimator.end_estimation()
 
