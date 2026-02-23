@@ -276,7 +276,10 @@ def vehicle_allocation(
             # occupancy level, but real life only sees one choice since we
             # observe just one tour occupancy. So, for estimation, we override
             # each choice to be the observed choice.
-            choices['choices'] = estimator.get_survey_values(choices, "tours", tours_veh_occup_col)
+            if occup_estimator:
+                # write the modeled choices for the occupancy level being estimated
+                estimator.write_choices(choices.choice)
+            choices['choice'] = estimator.get_survey_values(choices, "tours", tours_veh_occup_col)
 
         tours[tours_veh_occup_col] = choices["choice"]
         tours[tours_veh_occup_col] = tours[tours_veh_occup_col].astype(veh_choice_dtype)
@@ -284,7 +287,6 @@ def vehicle_allocation(
 
     if estimator:
         # just write out the final highest occupancy choice -- is this ok?
-        estimator.write_choices(choices.choice)
         estimator.write_override_choices(choices.choice)
         estimator.end_estimation()
 
