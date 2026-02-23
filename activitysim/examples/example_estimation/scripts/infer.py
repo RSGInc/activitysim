@@ -513,11 +513,12 @@ def determine_school_escorting_alt_chauf_columns(row, direction, tours):
     Each direction is handled separately, but the logic is the same.
     """
     assert direction in ["out", "inb"]
-    # only counting the school tours
+    # only counting the first school tour (tour_num == 1) to match ActivitySim
     if (
         (row["tour_type"] != "school")
         | pd.isna(row[f"{direction}_chauf_person_id"])
         | pd.isna(row[f"{direction}_escort_type"])
+        | (row.get("tour_num", 1) != 1)
     ):
         return row
 
@@ -525,17 +526,18 @@ def determine_school_escorting_alt_chauf_columns(row, direction, tours):
     chauf_tours = tours[
         tours.person_id == row[f"{direction}_chauf_person_id"]
     ].set_index(SURVEY_TOUR_ID)
-    # starting with looking for work tours for ride_share
+    # looking for the first mandatory tour for ride_share (could be work or school)
     if row[f"{direction}_escort_type"] == "ride_share":
+        mand_first = (chauf_tours.tour_category == "mandatory") & (chauf_tours.tour_num == 1)
         if direction == "out":
             chauf_tour_id = get_tour_around_time(
-                chauf_tours.loc[chauf_tours.tour_type == "work", "start"], row["start"]
+                chauf_tours.loc[mand_first, "start"], row["start"]
             )
             if not chauf_tour_id:
                 return row
         if direction == "inb":
             chauf_tour_id = get_tour_around_time(
-                chauf_tours.loc[chauf_tours.tour_type == "work", "end"], row["end"]
+                chauf_tours.loc[mand_first, "end"], row["end"]
             )
             if not chauf_tour_id:
                 return row
@@ -709,9 +711,12 @@ def infer_school_escorting(configs_dir, households, persons, tours):
             se_tours[inb_col].map(inb_chauf_tour_id_to_bundle_map).fillna(0)
         )
 
-    # making list of pure_escort chauffeur tours
-    # need separate list since they are created in ActivitySim in the school escorting model and handled uniquely
-    pe_tour_ids = get_list_of_pure_escort_tours(se_tours)
+    # Reset chauf values when bundle mapping failed (e.g., due to shared-tour exclusion)
+    # This prevents stale chauf codes from polluting the alt merge and pe_tour_ids
+    for i in range(1, 4):
+        for direction in ["out", "inb"]:
+            invalid = (se_tours[f"{direction}_bundle{i}"] == 0) & (se_tours[f"{direction}_chauf{i}"] != 0)
+            se_tours.loc[invalid, f"{direction}_chauf{i}"] = 0
 
     # alternatives are unique by the following columns
     alt_merge_cols = ["bundle1", "bundle2", "bundle3", "chauf1", "chauf2", "chauf3"]
@@ -731,6 +736,12 @@ def infer_school_escorting(configs_dir, households, persons, tours):
         se_alts, how="left", left_on=out_merge_cols, right_on=alt_merge_cols
     )
     out_hh_se.set_index("household_id", inplace=True)
+    if out_hh_se.Alt.isna().any():
+        n_bad = out_hh_se.Alt.isna().sum()
+        logger.warning(
+            f"{n_bad} households with outbound escorting data that did not "
+            f"match any school_escorting alternative — defaulting to no escorting"
+        )
     households["school_escorting_outbound"] = (
         out_hh_se.Alt.reindex(households.index).fillna(1).astype(int)
     )  # no escorting is default alternative
@@ -748,6 +759,12 @@ def infer_school_escorting(configs_dir, households, persons, tours):
         se_alts, how="left", left_on=inb_merge_cols, right_on=alt_merge_cols
     )
     inb_hh_se.set_index("household_id", inplace=True)
+    if inb_hh_se.Alt.isna().any():
+        n_bad = inb_hh_se.Alt.isna().sum()
+        logger.warning(
+            f"{n_bad} households with inbound escorting data that did not "
+            f"match any school_escorting alternative — defaulting to no escorting"
+        )
     households["school_escorting_inbound"] = (
         inb_hh_se.Alt.reindex(households.index).fillna(1).astype(int)
     )  # no escorting is default alternative
@@ -757,11 +774,40 @@ def infer_school_escorting(configs_dir, households, persons, tours):
         "school_escorting_outbound"
     ]
 
+    # Build pe_tour_ids AFTER the alt merge so that only tours from
+    # households with a valid escorting alternative (Alt > 1) are included.
+    # This ensures consistency with what ActivitySim's school_escorting
+    # model will actually produce in its school_escort_tours table.
+    outbound_escorting_hhs = households.index[
+        households["school_escorting_outbound"] > 1
+    ]
+    inbound_escorting_hhs = households.index[
+        households["school_escorting_inbound"] > 1
+    ]
+
+    out_pe = []
+    inb_pe = []
+    for i in range(1, 4):
+        out_mask = se_tours[f"out_chauf{i}"].isin([2, 4]) & se_tours[
+            "household_id"
+        ].isin(outbound_escorting_hhs)
+        out_pe.append(se_tours.loc[out_mask, "out_chauf_tour_id"])
+
+        inb_mask = se_tours[f"inb_chauf{i}"].isin([2, 4]) & se_tours[
+            "household_id"
+        ].isin(inbound_escorting_hhs)
+        inb_pe.append(se_tours.loc[inb_mask, "inb_chauf_tour_id"])
+
+    pe_tour_ids = pd.concat(out_pe + inb_pe)
+
     logger.info(
         f"Number of households with outbound escorting: {(households['school_escorting_outbound'] > 1).sum()}"
     )
     logger.info(
         f"Number of households with inbound escorting: {(households['school_escorting_inbound'] > 1).sum()}"
+    )
+    logger.info(
+        f"Pure escort chauffeur tours identified: {pe_tour_ids.nunique()} unique tours"
     )
     logger.info(
         f"Outbound escorting top 10 Alternatives:\n {households['school_escorting_outbound'].value_counts().head(10)}"
@@ -1144,6 +1190,7 @@ def infer_stop_frequency(configs_dir, tours, trips):
 
     assert (freq[SURVEY_TOUR_ID] == tours[SURVEY_TOUR_ID]).all()
 
+    assert freq.alt.notna().all(), "stop_frequency inference resulted in NaNs -- do all of your tours have at least one trip in and out?"
     return freq.alt
 
 
