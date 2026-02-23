@@ -265,6 +265,9 @@ def stop_frequency(
     state.tracing.register_traceable_table("trips", trips)
     state.get_rn_generator().add_channel("trips", trips)
 
+    if state.is_table("school_escort_trips"):
+        trips = school_escort_tours_trips.merge_school_escort_trips_into_pipeline(state)
+
     if estimator:
         # make sure they created trips with the expected tour_ids
         columns = ["person_id", "household_id", "tour_id", "outbound"]
@@ -314,9 +317,6 @@ def stop_frequency(
             slicer="person_id",
             columns=None,
         )
-
-    if state.is_table("school_escort_trips"):
-        school_escort_tours_trips.merge_school_escort_trips_into_pipeline(state)
 
     expressions.annotate_tables(
         state,
