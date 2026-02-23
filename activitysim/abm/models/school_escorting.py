@@ -587,6 +587,7 @@ def school_escorting(
             by=["household_id", "school_escort_direction"],
             ascending=[True, False],
             inplace=True,
+            kind="stable",
         )
 
         school_escort_tours = school_escort_tours_trips.create_pure_school_escort_tours(
