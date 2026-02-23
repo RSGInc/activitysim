@@ -230,6 +230,14 @@ def vehicle_allocation(
         # setting occup for access in spec expressions
         locals_dict.update({"occup": occup})
 
+        # Only pass estimator for the first occupancy level to avoid
+        # duplicate expression_values rows (same spec/coefficients across levels)
+        occup_estimator = (
+            estimator
+            if estimator and occup == model_settings.OCCUPANCY_LEVELS[0]
+            else None
+        )
+
         choices = simulate.simple_simulate(
             state,
             choosers=choosers,
@@ -239,7 +247,7 @@ def vehicle_allocation(
             locals_d=locals_dict,
             trace_label=trace_label,
             trace_choice_name="vehicle_allocation",
-            estimator=estimator,
+            estimator=occup_estimator,
             compute_settings=model_settings.compute_settings,
         )
 
@@ -268,7 +276,7 @@ def vehicle_allocation(
             # occupancy level, but real life only sees one choice since we
             # observe just one tour occupancy. So, for estimation, we override
             # each choice to be the observed choice.
-            choices = estimator.get_survey_values(choices, "tours", tours_veh_occup_col)
+            choices['choices'] = estimator.get_survey_values(choices, "tours", tours_veh_occup_col)
 
         tours[tours_veh_occup_col] = choices["choice"]
         tours[tours_veh_occup_col] = tours[tours_veh_occup_col].astype(veh_choice_dtype)
@@ -276,8 +284,8 @@ def vehicle_allocation(
 
     if estimator:
         # just write out the final highest occupancy choice -- is this ok?
-        estimator.write_choices(choices.alt_choice)
-        estimator.write_override_choices(choices)
+        estimator.write_choices(choices.choice)
+        estimator.write_override_choices(choices.choice)
         estimator.end_estimation()
 
     state.add_table("tours", tours)
