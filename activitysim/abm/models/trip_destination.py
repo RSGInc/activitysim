@@ -1382,7 +1382,7 @@ def run_trip_destination(
         # FIXME the below logic only works if there is no school escorting happening
         # the school escorting trips are not included in the trips table
 
-        if state.is_table("school_escort_trips"):
+        if not state.is_table("school_escort_trips"):
             # expect all the same trips
             survey_trips = estimator.get_survey_table("trips").sort_index()
             # need to check household_id incase household_sample_size != 0
