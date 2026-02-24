@@ -1386,7 +1386,9 @@ def run_trip_destination(
             # expect all the same trips
             survey_trips = estimator.get_survey_table("trips").sort_index()
             # need to check household_id incase household_sample_size != 0
-            survey_trips = survey_trips[survey_trips.household_id.isin(trips.household_id)]
+            survey_trips = survey_trips[
+                survey_trips.household_id.isin(trips.household_id)
+            ]
             assert survey_trips.index.equals(trips.index)
 
             first = survey_trips.trip_num == 1
@@ -1414,7 +1416,9 @@ def run_trip_destination(
                 == tour_origin[~survey_trips.outbound & last]
             ).all()
         else:
-            logger.warning("Skipping consistency checks in trip destination because school escorting trips were found")
+            logger.warning(
+                "Skipping consistency checks in trip destination because school escorting trips were found"
+            )
 
     # - filter tours_merged (AFTER copying destination and origin columns to trips)
     # tours_merged is used for logsums, we filter it here upfront to save space and time

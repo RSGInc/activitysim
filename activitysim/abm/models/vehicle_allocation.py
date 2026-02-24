@@ -279,7 +279,9 @@ def vehicle_allocation(
             if occup_estimator:
                 # write the modeled choices for the occupancy level being estimated
                 estimator.write_choices(choices.choice)
-            choices['choice'] = estimator.get_survey_values(choices, "tours", tours_veh_occup_col)
+            choices["choice"] = estimator.get_survey_values(
+                choices, "tours", tours_veh_occup_col
+            )
 
         tours[tours_veh_occup_col] = choices["choice"]
         tours[tours_veh_occup_col] = tours[tours_veh_occup_col].astype(veh_choice_dtype)
