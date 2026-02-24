@@ -799,11 +799,11 @@ def add_interaction_column(choosers, p_tup):
     dest_col = "_".join(["p%s" % pnum for pnum in p_tup])
 
     # build a string concatenating the ptypes of the persons in the order they appear in p_tup
-    choosers[dest_col] = choosers[add_pn("ptype", p_tup[0])].astype(str)
+    choosers[dest_col] = choosers[add_pn("ptype", p_tup[0])].astype(int).astype(str)
     for pnum in p_tup[1:]:
         choosers[dest_col] = choosers[dest_col] + choosers[
             add_pn("ptype", pnum)
-        ].astype(str)
+        ].astype(int).astype(str)
 
     # sort the list of ptypes so it is in increasing ptype order, then convert to int
     choosers[dest_col] = (
