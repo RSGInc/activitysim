@@ -528,7 +528,9 @@ def determine_school_escorting_alt_chauf_columns(row, direction, tours):
     ].set_index(SURVEY_TOUR_ID)
     # looking for the first mandatory tour for ride_share (could be work or school)
     if row[f"{direction}_escort_type"] == "ride_share":
-        mand_first = (chauf_tours.tour_category == "mandatory") & (chauf_tours.tour_num == 1)
+        mand_first = (chauf_tours.tour_category == "mandatory") & (
+            chauf_tours.tour_num == 1
+        )
         if direction == "out":
             chauf_tour_id = get_tour_around_time(
                 chauf_tours.loc[mand_first, "start"], row["start"]
@@ -715,7 +717,9 @@ def infer_school_escorting(configs_dir, households, persons, tours):
     # This prevents stale chauf codes from polluting the alt merge and pe_tour_ids
     for i in range(1, 4):
         for direction in ["out", "inb"]:
-            invalid = (se_tours[f"{direction}_bundle{i}"] == 0) & (se_tours[f"{direction}_chauf{i}"] != 0)
+            invalid = (se_tours[f"{direction}_bundle{i}"] == 0) & (
+                se_tours[f"{direction}_chauf{i}"] != 0
+            )
             se_tours.loc[invalid, f"{direction}_chauf{i}"] = 0
 
     # alternatives are unique by the following columns
@@ -781,9 +785,7 @@ def infer_school_escorting(configs_dir, households, persons, tours):
     outbound_escorting_hhs = households.index[
         households["school_escorting_outbound"] > 1
     ]
-    inbound_escorting_hhs = households.index[
-        households["school_escorting_inbound"] > 1
-    ]
+    inbound_escorting_hhs = households.index[households["school_escorting_inbound"] > 1]
 
     out_pe = []
     inb_pe = []
@@ -1190,7 +1192,9 @@ def infer_stop_frequency(configs_dir, tours, trips):
 
     assert (freq[SURVEY_TOUR_ID] == tours[SURVEY_TOUR_ID]).all()
 
-    assert freq.alt.notna().all(), "stop_frequency inference resulted in NaNs -- do all of your tours have at least one trip in and out?"
+    assert (
+        freq.alt.notna().all()
+    ), "stop_frequency inference resulted in NaNs -- do all of your tours have at least one trip in and out?"
     return freq.alt
 
 
