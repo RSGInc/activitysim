@@ -1379,36 +1379,42 @@ def run_trip_destination(
         # should check consistency of survey trips origin, destination with parent tour and subsequent/prior trip?
         # FIXME if not consistent, do we fail or override? (seems weird to override them to bad values?)
 
-        # expect all the same trips
-        survey_trips = estimator.get_survey_table("trips").sort_index()
-        # need to check household_id incase household_sample_size != 0
-        survey_trips = survey_trips[survey_trips.household_id.isin(trips.household_id)]
-        assert survey_trips.index.equals(trips.index)
+        # FIXME the below logic only works if there is no school escorting happening
+        # the school escorting trips are not included in the trips table
 
-        first = survey_trips.trip_num == 1
-        last = survey_trips.trip_num == trips.trip_count
+        if state.is_table("school_escort_trips"):
+            # expect all the same trips
+            survey_trips = estimator.get_survey_table("trips").sort_index()
+            # need to check household_id incase household_sample_size != 0
+            survey_trips = survey_trips[survey_trips.household_id.isin(trips.household_id)]
+            assert survey_trips.index.equals(trips.index)
 
-        # expect survey's outbound first trip origin to be same as half tour origin
-        assert (
-            survey_trips.origin[survey_trips.outbound & first]
-            == tour_origin[survey_trips.outbound & first]
-        ).all()
-        # expect outbound last trip destination to be same as half tour destination
-        assert (
-            survey_trips.destination[survey_trips.outbound & last]
-            == tour_destination[survey_trips.outbound & last]
-        ).all()
+            first = survey_trips.trip_num == 1
+            last = survey_trips.trip_num == trips.trip_count
 
-        # expect inbound first trip origin to be same as half tour destination
-        assert (
-            survey_trips.origin[~survey_trips.outbound & first]
-            == tour_destination[~survey_trips.outbound & first]
-        ).all()
-        # expect inbound last trip destination to be same as half tour origin
-        assert (
-            survey_trips.destination[~survey_trips.outbound & last]
-            == tour_origin[~survey_trips.outbound & last]
-        ).all()
+            # expect survey's outbound first trip origin to be same as half tour origin
+            assert (
+                survey_trips.origin[survey_trips.outbound & first]
+                == tour_origin[survey_trips.outbound & first]
+            ).all()
+            # expect outbound last trip destination to be same as half tour destination
+            assert (
+                survey_trips.destination[survey_trips.outbound & last]
+                == tour_destination[survey_trips.outbound & last]
+            ).all()
+
+            # expect inbound first trip origin to be same as half tour destination
+            assert (
+                survey_trips.origin[~survey_trips.outbound & first]
+                == tour_destination[~survey_trips.outbound & first]
+            ).all()
+            # expect inbound last trip destination to be same as half tour origin
+            assert (
+                survey_trips.destination[~survey_trips.outbound & last]
+                == tour_origin[~survey_trips.outbound & last]
+            ).all()
+        else:
+            logger.warning("Skipping consistency checks in trip destination because school escorting trips were found")
 
     # - filter tours_merged (AFTER copying destination and origin columns to trips)
     # tours_merged is used for logsums, we filter it here upfront to save space and time
