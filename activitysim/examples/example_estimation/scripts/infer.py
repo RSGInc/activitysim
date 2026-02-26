@@ -253,6 +253,9 @@ def infer_non_mandatory_tour_frequency(configs_dir, persons, tours, pe_tour_ids)
         columns={tour_type: "_%s" % tour_type for tour_type in tour_types}
     )
     tf["non_mandatory_tour_frequency"] = alt_id
+
+    assert not tf.non_mandatory_tour_frequency.isna().any(), \
+        f"Bad non_mandatory tour frequencies for {persons.index[tf.non_mandatory_tour_frequency.isna()]}"
     return tf
 
 
@@ -514,10 +517,12 @@ def determine_school_escorting_alt_chauf_columns(row, direction, tours):
     """
     assert direction in ["out", "inb"]
     # only counting the first school tour (tour_num == 1) to match ActivitySim
+    # Note: read_tables converts NaN to "" for string columns, so pd.isna()
+    # alone won't catch missing escort types — check for valid values instead.
     if (
         (row["tour_type"] != "school")
         | pd.isna(row[f"{direction}_chauf_person_id"])
-        | pd.isna(row[f"{direction}_escort_type"])
+        | (row[f"{direction}_escort_type"] not in ("ride_share", "pure_escort"))
         | (row.get("tour_num", 1) != 1)
     ):
         return row
@@ -577,13 +582,16 @@ def determine_school_escorting_alt_chauf_columns(row, direction, tours):
                 if row[f"{direction}_escort_type"] == "ride_share":
                     # ride share
                     row[f"{direction}_chauf{i}"] = 1
-                else:
+                elif row[f"{direction}_escort_type"] == "pure_escort":
                     # pure escort
                     row[f"{direction}_chauf{i}"] = 2
+                else:
+                    # no escort
+                    row[f"{direction}_chauf{i}"] = 0
 
             # if the chauffeur is numbered 2
             if (
-                (not pd.isna(row["chauf_id1"]))
+                (not pd.isna(row["chauf_id2"]))
                 & (not pd.isna(row[f"{direction}_chauf_person_id"]))
                 & (row["chauf_id2"] == row[f"{direction}_chauf_person_id"])
             ):
@@ -591,9 +599,12 @@ def determine_school_escorting_alt_chauf_columns(row, direction, tours):
                 if row[f"{direction}_escort_type"] == "ride_share":
                     # ride share
                     row[f"{direction}_chauf{i}"] = 3
-                else:
+                elif row[f"{direction}_escort_type"] == "pure_escort":
                     # pure escort
                     row[f"{direction}_chauf{i}"] = 4
+                else:
+                    # no escort
+                    row[f"{direction}_chauf{i}"] = 0
 
             # bundle number will be mapped later from the chauffeur tour id
             row[f"{direction}_bundle{i}"] = chauf_tour_id
