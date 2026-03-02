@@ -583,6 +583,11 @@ def create_school_escort_trips(escort_bundles):
     escortee_trips = create_escortee_trips(escort_bundles)
     school_escort_trips = pd.concat([chauf_trips, escortee_trips], axis=0)
 
+    # explicitly disallow intrazonal school escorting trips
+    school_escort_trips = school_escort_trips[
+        school_escort_trips.origin != school_escort_trips.destination
+    ]
+
     # Can't assign a true trip id yet because they are numbered based on the number of stops in each direction.
     # This isn't decided until after the stop frequency model runs.
     # Creating this temporary school_escort_trip_id column to match them downstream

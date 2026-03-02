@@ -254,8 +254,9 @@ def infer_non_mandatory_tour_frequency(configs_dir, persons, tours, pe_tour_ids)
     )
     tf["non_mandatory_tour_frequency"] = alt_id
 
-    assert not tf.non_mandatory_tour_frequency.isna().any(), \
-        f"Bad non_mandatory tour frequencies for {persons.index[tf.non_mandatory_tour_frequency.isna()]}"
+    assert (
+        not tf.non_mandatory_tour_frequency.isna().any()
+    ), f"Bad non_mandatory tour frequencies for {persons.index[tf.non_mandatory_tour_frequency.isna()]}"
     return tf
 
 
