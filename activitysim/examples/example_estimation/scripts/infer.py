@@ -1055,10 +1055,16 @@ def patch_tour_ids(
 
     tour_id_map = patched_tours.set_index(SURVEY_TOUR_ID)[ASIM_TOUR_ID]
     for direction in ["out", "inb"]:
-        patched_tours[f"{direction}_chauffeur_tour_id"] = (
-            patched_tours[f"{direction}_chauffeur_tour_id"].map(tour_id_map).fillna(-1)
-        )
-
+        if f"{direction}_chauffeur_tour_id" in patched_tours.columns:
+            patched_tours[f"{direction}_chauffeur_tour_id"] = (
+                patched_tours[f"{direction}_chauffeur_tour_id"].map(tour_id_map).fillna(-1)
+            )
+        if f"{direction}_escort_tour_id" in patched_tours.columns:
+            patched_tours[f"{direction}_escorted_tour_ids"] = (
+                patched_tours[f"{direction}_escorted_tour_ids"].map(
+                    lambda x: "_".join([str(tour_id_map.get(int(i), -1)) for i in x.split("_")]) if pd.notna(x) and x != "" else pd.NA
+                )
+            )
     del patched_tours["tour_type_num"]
 
     assert ASIM_TOUR_ID in patched_tours
