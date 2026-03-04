@@ -529,45 +529,8 @@ def determine_school_escorting_alt_chauf_columns(row, direction, tours):
         return row
 
     # need to ensure chauffeur tour exists
-    chauf_tours = tours[
-        tours.person_id == row[f"{direction}_chauf_person_id"]
-    ].set_index(SURVEY_TOUR_ID)
-    # looking for the first mandatory tour for ride_share (could be work or school)
-    if row[f"{direction}_escort_type"] == "ride_share":
-        mand_first = (chauf_tours.tour_category == "mandatory") & (
-            chauf_tours.tour_num == 1
-        )
-        if direction == "out":
-            chauf_tour_id = get_tour_around_time(
-                chauf_tours.loc[mand_first, "start"], row["start"]
-            )
-            if not chauf_tour_id:
-                return row
-        if direction == "inb":
-            chauf_tour_id = get_tour_around_time(
-                chauf_tours.loc[mand_first, "end"], row["end"]
-            )
-            if not chauf_tour_id:
-                return row
-    # need matching escort tour from chauffeur for pure_escort
-    else:
-        if direction == "out":
-            chauf_tour_id = get_tour_around_time(
-                chauf_tours.loc[chauf_tours.tour_type == "escort", "start"],
-                row["start"],
-            )
-            if not chauf_tour_id:
-                return row
-        if direction == "inb":
-            chauf_tour_id = get_tour_around_time(
-                chauf_tours.loc[chauf_tours.tour_type == "escort", "end"], row["end"]
-            )
-            # can't have case where the same escort tour is used for both outbound and inbound travel
-            same_tour_as_out = chauf_tour_id == row["out_chauf_tour_id"]
-            if (not chauf_tour_id) or same_tour_as_out:
-                return row
 
-    row[f"{direction}_chauf_tour_id"] = chauf_tour_id
+    row[f"{direction}_chauf_tour_id"] = row[f"{direction}_chauffeur_tour_id"]
 
     # looping through all three children
     for i in range(1, 4):
@@ -608,7 +571,7 @@ def determine_school_escorting_alt_chauf_columns(row, direction, tours):
                     row[f"{direction}_chauf{i}"] = 0
 
             # bundle number will be mapped later from the chauffeur tour id
-            row[f"{direction}_bundle{i}"] = chauf_tour_id
+            row[f"{direction}_bundle{i}"] = row[f"{direction}_chauffeur_tour_id"]
 
     return row
 
@@ -799,20 +762,20 @@ def infer_school_escorting(configs_dir, households, persons, tours):
     ]
     inbound_escorting_hhs = households.index[households["school_escorting_inbound"] > 1]
 
-    out_pe = []
-    inb_pe = []
-    for i in range(1, 4):
-        out_mask = se_tours[f"out_chauf{i}"].isin([2, 4]) & se_tours[
-            "household_id"
-        ].isin(outbound_escorting_hhs)
-        out_pe.append(se_tours.loc[out_mask, "out_chauf_tour_id"])
-
-        inb_mask = se_tours[f"inb_chauf{i}"].isin([2, 4]) & se_tours[
-            "household_id"
-        ].isin(inbound_escorting_hhs)
-        inb_pe.append(se_tours.loc[inb_mask, "inb_chauf_tour_id"])
-
-    pe_tour_ids = pd.concat(out_pe + inb_pe)
+    pe_tour_ids = tours.loc[
+        (tours.tour_type == "escort")
+        & (
+            (
+                tours.household_id.isin(outbound_escorting_hhs)
+                & tours[SURVEY_TOUR_ID].isin(tours.out_chauffeur_tour_id)
+            )
+            | (
+                tours.household_id.isin(inbound_escorting_hhs)
+                & tours[SURVEY_TOUR_ID].isin(tours.inb_chauffeur_tour_id)
+            )
+        ),
+        SURVEY_TOUR_ID,
+    ]
 
     logger.info(
         f"Number of households with outbound escorting: {(households['school_escorting_outbound'] > 1).sum()}"
@@ -1057,13 +1020,19 @@ def patch_tour_ids(
     for direction in ["out", "inb"]:
         if f"{direction}_chauffeur_tour_id" in patched_tours.columns:
             patched_tours[f"{direction}_chauffeur_tour_id"] = (
-                patched_tours[f"{direction}_chauffeur_tour_id"].map(tour_id_map).fillna(-1)
+                patched_tours[f"{direction}_chauffeur_tour_id"]
+                .map(tour_id_map)
+                .fillna(-1)
             )
         if f"{direction}_escort_tour_id" in patched_tours.columns:
-            patched_tours[f"{direction}_escorted_tour_ids"] = (
-                patched_tours[f"{direction}_escorted_tour_ids"].map(
-                    lambda x: "_".join([str(tour_id_map.get(int(i), -1)) for i in x.split("_")]) if pd.notna(x) and x != "" else pd.NA
+            patched_tours[f"{direction}_escorted_tour_ids"] = patched_tours[
+                f"{direction}_escorted_tour_ids"
+            ].map(
+                lambda x: "_".join(
+                    [str(tour_id_map.get(int(i), -1)) for i in x.split("_")]
                 )
+                if pd.notna(x) and x != ""
+                else pd.NA
             )
     del patched_tours["tour_type_num"]
 
