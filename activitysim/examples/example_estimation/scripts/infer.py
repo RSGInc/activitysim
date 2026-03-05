@@ -763,15 +763,19 @@ def infer_school_escorting(configs_dir, households, persons, tours):
     inbound_escorting_hhs = households.index[households["school_escorting_inbound"] > 1]
 
     pe_tour_ids = tours.loc[
-        (tours.tour_type == "escort")
+        (tours.tour_category == "non_mandatory")
         & (
             (
                 tours.household_id.isin(outbound_escorting_hhs)
-                & tours[SURVEY_TOUR_ID].isin(tours.out_chauffeur_tour_id)
+                & tours[SURVEY_TOUR_ID].isin(
+                    tours[tours.out_escort_type == "pure_escort"].out_chauffeur_tour_id
+                )
             )
             | (
                 tours.household_id.isin(inbound_escorting_hhs)
-                & tours[SURVEY_TOUR_ID].isin(tours.inb_chauffeur_tour_id)
+                & tours[SURVEY_TOUR_ID].isin(
+                    tours[tours.inb_escort_type == "pure_escort"].inb_chauffeur_tour_id
+                )
             )
         ),
         SURVEY_TOUR_ID,
