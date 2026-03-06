@@ -768,13 +768,19 @@ def infer_school_escorting(configs_dir, households, persons, tours):
             (
                 tours.household_id.isin(outbound_escorting_hhs)
                 & tours[SURVEY_TOUR_ID].isin(
-                    tours[tours.out_escort_type == "pure_escort"].out_chauffeur_tour_id
+                    tours[
+                        (tours.out_escort_type == "pure_escort")
+                        & (tours.tour_type == "school")
+                    ].out_chauffeur_tour_id
                 )
             )
             | (
                 tours.household_id.isin(inbound_escorting_hhs)
                 & tours[SURVEY_TOUR_ID].isin(
-                    tours[tours.inb_escort_type == "pure_escort"].inb_chauffeur_tour_id
+                    tours[
+                        (tours.inb_escort_type == "pure_escort")
+                        & (tours.tour_type == "school")
+                    ].inb_chauffeur_tour_id
                 )
             )
         ),
