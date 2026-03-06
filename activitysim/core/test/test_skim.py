@@ -175,7 +175,9 @@ def _load_omx_dataset(omx_path, time_periods=TIME_PERIODS):
             time_periods=time_periods,
             max_float_precision=32,
         )
-        ds = ds.compute()
+        # HDF5/PyTables is not thread-safe; force single-threaded compute
+        # to avoid H5ARRAYOreadSlice errors on Linux CI.
+        ds = ds.compute(scheduler="synchronous")
     return ds
 
 
