@@ -483,18 +483,6 @@ def get_list_of_pure_escort_tours(se_tours):
     return pe_tour_ids
 
 
-def get_tour_around_time(
-    tour_times, reference_time, window_size=SCHOOL_ESCORT_TIME_WINDOW
-):
-    overlap = (tour_times - reference_time).abs()
-    within_window = overlap <= window_size
-    if within_window.any():
-        # taking the first matching tour's survey tour id
-        chauf_tour_id = tour_times[within_window].index.values[0]
-        return chauf_tour_id
-    return None
-
-
 def determine_school_escorting_alt_chauf_columns(row, direction, tours):
     """
     School escorting alternatives are determined by the escort pattern for each child.
@@ -524,7 +512,7 @@ def determine_school_escorting_alt_chauf_columns(row, direction, tours):
         (row["tour_type"] != "school")
         | pd.isna(row[f"{direction}_chauf_person_id"])
         | (row[f"{direction}_escort_type"] not in ("ride_share", "pure_escort"))
-        | (row.get("tour_num", 1) != 1)
+        # | (row.get("tour_num", 1) != 1)
     ):
         return row
 

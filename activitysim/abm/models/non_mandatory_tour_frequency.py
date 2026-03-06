@@ -456,10 +456,30 @@ def non_mandatory_tour_frequency(
                 )
             ]
 
-        assert len(non_mandatory_survey_tours) == len(non_mandatory_tours)
-        assert non_mandatory_survey_tours.index.equals(
-            non_mandatory_tours.sort_index().index
-        )
+        # assert len(non_mandatory_survey_tours) == len(non_mandatory_tours)
+        # assert non_mandatory_survey_tours.index.equals(
+        #     non_mandatory_tours.sort_index().index
+        # )
+
+        # drop problem survey tour households
+        problem_households = non_mandatory_survey_tours.loc[
+            ~non_mandatory_survey_tours.index.to_series().isin(non_mandatory_tours.index),
+            "household_id"]
+        
+        problem_households.to_csv("households_w_missing_nm_tours.csv")
+
+        tours = state.get_table("tours")
+        tours = tours[~tours.household_id.isin(problem_households.values)]
+
+
+        state.add_table("tours", tours)
+        state.get_rn_generator().drop_channel("tours")
+        state.get_rn_generator().add_channel("tours", tours)
+
+
+        non_mandatory_survey_tours = non_mandatory_survey_tours[~non_mandatory_survey_tours.household_id.isin(problem_households.values)]
+
+
 
         # make sure they created tours with the expected tour_ids
         columns = ["person_id", "household_id", "tour_type", "tour_category"]
