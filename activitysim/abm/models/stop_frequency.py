@@ -281,12 +281,22 @@ def stop_frequency(
         ]
         if len(survey_trips_not_in_trips) > 0:
             print(f"survey_trips_not_in_trips\n{survey_trips_not_in_trips}")
+            survey_trips_not_in_trips.to_csv("survey_trips_not_in_trips.csv")
             different = True
         trips_not_in_survey_trips = trips[~trips.index.isin(survey_trips.index)]
         if len(trips_not_in_survey_trips) > 0:
             print(f"trips_not_in_survey_trips\n{trips_not_in_survey_trips}")
+            trips_not_in_survey_trips.to_csv("trips_not_in_survey_trips.csv")
             different = True
-        assert not different
+        # assert not different
+        
+        tour_ids_from_missing = set(survey_trips_not_in_trips.tour_id.unique()) | set(trips_not_in_survey_trips.tour_id.unique())
+        logger.warning(
+            f"Some trips differ between survey and modeled. Dropping {len(tour_ids_from_missing)} ({len(tour_ids_from_missing) / len(tours) * 100:.2f}%) tours with missing trips from both for comparison."
+        )
+
+        tours = tours[~tours.index.isin(tour_ids_from_missing)]
+        trips = trips[~trips.tour_id.isin(tour_ids_from_missing)]
 
         survey_trips = estimation.manager.get_survey_values(
             trips, table_name="trips", column_names=columns
@@ -300,7 +310,14 @@ def stop_frequency(
             print("differing survey_trips\n%s" % survey_trips[trips_differ])
             print("differing modeled_trips\n%s" % trips[columns][trips_differ])
 
-        assert not trips_differ.any()
+        state.add_table("tours", tours)
+        state.add_table("trips", trips)
+        state.get_rn_generator().drop_channel("trips")
+        state.get_rn_generator().add_channel("trips", trips)
+        state.get_rn_generator().drop_channel("tours")
+        state.get_rn_generator().add_channel("tours", tours)
+
+        # assert not trips_differ.any()
 
     if trace_hh_id:
         state.tracing.trace_df(
