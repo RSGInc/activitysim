@@ -486,6 +486,13 @@ def non_mandatory_tour_frequency(
         state.get_rn_generator().drop_channel("persons")
         state.get_rn_generator().add_channel("persons", persons)
 
+        persons = state.get_table("persons_merged")
+        persons = persons[~persons.household_id.isin(problem_households.values)]
+
+        state.add_table("persons_merged", persons)
+        state.get_rn_generator().drop_channel("persons_merged")
+        state.get_rn_generator().add_channel("persons_merged", persons)
+
         households = state.get_table("households")
         households = households[
             ~households.index.to_series().isin(problem_households.values)
