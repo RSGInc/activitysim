@@ -483,8 +483,6 @@ def non_mandatory_tour_frequency(
             se_tours = se_tours[~se_tours.household_id.isin(problem_households.values)]
 
             state.add_table("school_escort_tours", se_tours)
-            state.get_rn_generator().drop_channel("school_escort_tours")
-            state.get_rn_generator().add_channel("school_escort_tours", se_tours)
 
         non_mandatory_survey_tours = non_mandatory_survey_tours[
             ~non_mandatory_survey_tours.household_id.isin(problem_households.values)
