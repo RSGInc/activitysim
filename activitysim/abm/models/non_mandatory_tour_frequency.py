@@ -479,7 +479,7 @@ def non_mandatory_tour_frequency(
         state.get_rn_generator().add_channel("tours", tours)
 
         if state.is_table("school_escort_tours"):
-            
+
             se_tours = state.get_table("school_escort_tours")
             se_tours = se_tours[~se_tours.household_id.isin(problem_households.values)]
             state.drop_table("school_escort_tours")

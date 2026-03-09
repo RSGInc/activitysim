@@ -981,6 +981,11 @@ def force_escortee_tour_modes_to_match_chauffeur(state: workflow.State, tours):
     se_tours["school_tour_ids"] = se_tours["school_tour_ids"].astype("int64")
     mode_mapping = se_tours.set_index("school_tour_ids")["tour_mode"]
 
+    # forcibly ignore missing tours
+    idx_in_tours = mode_mapping.index.to_series().isin(tours.index)
+    logger.info(f"Ignoring mode mapping for {(~idx_in_tours).sum()} tours")
+    mode_mapping = mode_mapping.loc[idx_in_tours]
+
     # setting escortee tours to have the same tour mode as chauffeur
     original_modes = tours["tour_mode"].copy()
     tours.loc[mode_mapping.index, "tour_mode"] = mode_mapping
