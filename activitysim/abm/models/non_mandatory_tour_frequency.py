@@ -463,23 +463,32 @@ def non_mandatory_tour_frequency(
 
         # drop problem survey tour households
         problem_households = non_mandatory_survey_tours.loc[
-            ~non_mandatory_survey_tours.index.to_series().isin(non_mandatory_tours.index),
-            "household_id"]
-        
+            ~non_mandatory_survey_tours.index.to_series().isin(
+                non_mandatory_tours.index
+            ),
+            "household_id",
+        ]
+
         problem_households.to_csv("households_w_missing_nm_tours.csv")
 
         tours = state.get_table("tours")
         tours = tours[~tours.household_id.isin(problem_households.values)]
 
-
         state.add_table("tours", tours)
         state.get_rn_generator().drop_channel("tours")
         state.get_rn_generator().add_channel("tours", tours)
 
+        if state.is_table("school_escort_tours"):
+            se_tours = state.get_table("school_escort_tours")
+            se_tours = se_tours[~se_tours.household_id.isin(problem_households.values)]
 
-        non_mandatory_survey_tours = non_mandatory_survey_tours[~non_mandatory_survey_tours.household_id.isin(problem_households.values)]
+            state.add_table("school_escort_tours", se_tours)
+            state.get_rn_generator().drop_channel("school_escort_tours")
+            state.get_rn_generator().add_channel("school_escort_tours", se_tours)
 
-
+        non_mandatory_survey_tours = non_mandatory_survey_tours[
+            ~non_mandatory_survey_tours.household_id.isin(problem_households.values)
+        ]
 
         # make sure they created tours with the expected tour_ids
         columns = ["person_id", "household_id", "tour_type", "tour_category"]

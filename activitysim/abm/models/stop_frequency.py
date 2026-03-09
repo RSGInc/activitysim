@@ -289,8 +289,10 @@ def stop_frequency(
             trips_not_in_survey_trips.to_csv("trips_not_in_survey_trips.csv")
             different = True
         # assert not different
-        
-        tour_ids_from_missing = set(survey_trips_not_in_trips.tour_id.unique()) | set(trips_not_in_survey_trips.tour_id.unique())
+
+        tour_ids_from_missing = set(survey_trips_not_in_trips.tour_id.unique()) | set(
+            trips_not_in_survey_trips.tour_id.unique()
+        )
         logger.warning(
             f"Some trips differ between survey and modeled. Dropping {len(tour_ids_from_missing)} ({len(tour_ids_from_missing) / len(tours) * 100:.2f}%) tours with missing trips from both for comparison."
         )
