@@ -471,12 +471,29 @@ def non_mandatory_tour_frequency(
 
         problem_households.to_csv("households_w_missing_nm_tours.csv")
 
+        # FIXME-EST - drop the problematic households
         tours = state.get_table("tours")
         tours = tours[~tours.household_id.isin(problem_households.values)]
 
         state.add_table("tours", tours)
         state.get_rn_generator().drop_channel("tours")
         state.get_rn_generator().add_channel("tours", tours)
+
+        persons = state.get_table("persons")
+        persons = persons[~persons.household_id.isin(problem_households.values)]
+
+        state.add_table("persons", persons)
+        state.get_rn_generator().drop_channel("persons")
+        state.get_rn_generator().add_channel("persons", persons)
+
+        households = state.get_table("households")
+        households = households[
+            ~households.index.to_series().isin(problem_households.values)
+        ]
+
+        state.add_table("households", households)
+        state.get_rn_generator().drop_channel("households")
+        state.get_rn_generator().add_channel("households", households)
 
         if state.is_table("school_escort_tours"):
 
