@@ -479,10 +479,9 @@ def non_mandatory_tour_frequency(
         state.get_rn_generator().drop_channel("tours")
         state.get_rn_generator().add_channel("tours", tours)
 
-        persons = state.get_table("persons")
         persons = persons[~persons.household_id.isin(problem_households.values)]
 
-        state.add_table("persons", persons)
+        # state.add_table("persons", persons)
         state.get_rn_generator().drop_channel("persons")
         state.get_rn_generator().add_channel("persons", persons)
 
@@ -501,6 +500,11 @@ def non_mandatory_tour_frequency(
             se_tours = se_tours[~se_tours.household_id.isin(problem_households.values)]
             state.drop_table("school_escort_tours")
             state.add_table("school_escort_tours", se_tours)
+
+            se_trips = state.get_table("school_escort_trips")
+            se_trips = se_trips[~se_trips.household_id.isin(problem_households.values)]
+            state.drop_table("school_escort_trips")
+            state.add_table("school_escort_trips", se_trips)
 
         non_mandatory_survey_tours = non_mandatory_survey_tours[
             ~non_mandatory_survey_tours.household_id.isin(problem_households.values)
