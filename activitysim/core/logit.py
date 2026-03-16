@@ -117,7 +117,7 @@ def utils_to_logsums(utils, exponentiated=False, allow_zero_probs=False):
 
     # fixme - conversion to float not needed in either case?
     # utils_arr = utils.values.astype('float')
-    utils_arr = utils.values
+    utils_arr = utils.to_numpy(copy=True)
     if not exponentiated:
         utils_arr = np.exp(utils_arr)
 
@@ -174,7 +174,7 @@ def validate_utils(
     """
     trace_label = tracing.extend_trace_label(trace_label, "validate_utils")
 
-    utils_arr = utils.values
+    utils_arr = utils.to_numpy(copy=True)
 
     np.putmask(utils_arr, utils_arr <= UTIL_MIN, UTIL_UNAVAILABLE)
 
@@ -225,6 +225,9 @@ def utils_to_probs(
         if True value rows in which all utility alts are EXP_UTIL_MIN will result
         in rows in probs to have all zero probability (and not sum to 1.0)
         This is for the benefit of calculating probabilities of nested logit nests
+        When allow_zero_probs is True, overflow protection is disabled (with a warning)
+        to preserve zero-probability rows. For large float32 utilities, overflow
+        protection is still enabled and may raise a ValueError.
 
     trace_choosers : pandas.dataframe
         the choosers df (for interaction_simulate) to facilitate the reporting of hh_id
@@ -255,7 +258,7 @@ def utils_to_probs(
 
     # fixme - conversion to float not needed in either case?
     # utils_arr = utils.values.astype('float')
-    utils_arr = utils.values
+    utils_arr = utils.to_numpy(copy=True)
 
     if allow_zero_probs:
         if overflow_protection:
@@ -344,8 +347,21 @@ def utils_to_probs(
     return probs
 
 
-# TODO-EET: add doc string, tracing
 def add_ev1_random(state: workflow.State, df: pd.DataFrame):
+    """
+    Add iid EV1 (Gumbel) random error terms to utilities for EET choice.
+
+    Parameters
+    ----------
+    state : workflow.State
+    df : pandas.DataFrame
+        Utilities indexed by chooser and with alternatives as columns.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Utilities with EV1 errors added.
+    """
     nest_utils_for_choice = df.copy()
     nest_utils_for_choice += state.get_rn_generator().gumbel_for_df(
         nest_utils_for_choice, n=nest_utils_for_choice.shape[1]
@@ -367,12 +383,39 @@ def choose_from_tree(
     raise ValueError("This should never happen - no alternative found")
 
 
-# TODO-EET: add doc string, tracing
 def make_choices_explicit_error_term_nl(
     state, nested_utilities, alt_order_array, nest_spec, trace_label
 ):
-    """walk down the nesting tree and make choice at each level, which is the root of the next level choice."""
+    """
+    Walk down the nesting tree and make a choice at each level using EET.
+
+    Parameters
+    ----------
+    state : workflow.State
+    nested_utilities : pandas.DataFrame
+        Utilities for nest and leaf nodes.
+    alt_order_array : numpy.ndarray
+        Leaf alternatives in the original ordering.
+    nest_spec : dict or LogitNestSpec
+        Nest specification for the choice model.
+    trace_label : str
+        Trace label for logging and tracing.
+
+    Returns
+    -------
+    pandas.Series
+        Choice indices aligned to `alt_order_array`.
+    """
+    if trace_label:
+        state.tracing.trace_df(
+            nested_utilities, tracing.extend_trace_label(trace_label, "nested_utils")
+        )
     nest_utils_for_choice = add_ev1_random(state, nested_utilities)
+    if trace_label:
+        state.tracing.trace_df(
+            nest_utils_for_choice,
+            tracing.extend_trace_label(trace_label, "nested_utils_eet"),
+        )
 
     all_alternatives = set(nest.name for nest in each_nest(nest_spec, type="leaf"))
     logit_nest_groups = group_nest_names_by_level(nest_spec)
@@ -389,24 +432,79 @@ def make_choices_explicit_error_term_nl(
         ),
         axis=1,
     )
-    # TODO-EET: reporting like for zero probs
-    assert not choices.isnull().any(), f"No choice for {trace_label}"
+    missing_choices = choices.isnull()
+    if missing_choices.any():
+        report_bad_choices(
+            state,
+            missing_choices,
+            nested_utilities,
+            trace_label=tracing.extend_trace_label(trace_label, "no_choice"),
+            msg="no alternative selected",
+            raise_error=False,
+        )
+    assert not missing_choices.any(), f"No choice for {trace_label}"
     choices = pd.Series(choices, index=nest_utils_for_choice.index)
 
     # In order for choice indexing to be consistent with MNL and cumsum MC choices, we need to index in the order
     #  alternatives were originally created before adding nest nodes that are not elemental alternatives
     choices = choices.map({v: k for k, v in enumerate(alt_order_array)})
 
+    if trace_label:
+        state.tracing.trace_df(
+            choices,
+            tracing.extend_trace_label(trace_label, "choices"),
+            columns=[None, "choice"],
+        )
+
     return choices
 
 
-# TODO-EET: add doc string, tracing
 def make_choices_explicit_error_term_mnl(state, utilities, trace_label):
+    """
+    Make EET choices for a multinomial logit model by adding EV1 errors.
+
+    Parameters
+    ----------
+    state : workflow.State
+    utilities : pandas.DataFrame
+        Utilities with choosers as rows and alternatives as columns.
+    trace_label : str
+        Trace label for logging and tracing.
+
+    Returns
+    -------
+    pandas.Series
+        Choice indices aligned to the utilities columns order.
+    """
+    if trace_label:
+        state.tracing.trace_df(
+            utilities, tracing.extend_trace_label(trace_label, "utilities")
+        )
     utilities_incl_unobs = add_ev1_random(state, utilities)
+    if trace_label:
+        state.tracing.trace_df(
+            utilities_incl_unobs,
+            tracing.extend_trace_label(trace_label, "utilities_eet"),
+        )
     choices = np.argmax(utilities_incl_unobs.to_numpy(), axis=1)
-    # TODO-EET: reporting like for zero probs
-    assert not np.isnan(choices).any(), f"No choice for {trace_label}"
+    missing_choices = np.isnan(choices)
+    if missing_choices.any():
+        report_bad_choices(
+            state,
+            missing_choices,
+            utilities,
+            trace_label=tracing.extend_trace_label(trace_label, "no_choice"),
+            msg="no alternative selected",
+            raise_error=False,
+        )
+    assert not missing_choices.any(), f"No choice for {trace_label}"
     choices = pd.Series(choices, index=utilities_incl_unobs.index)
+    if trace_label:
+        state.tracing.trace_df(
+            choices,
+            tracing.extend_trace_label(trace_label, "choices"),
+            columns=[None, "choice"],
+        )
     return choices
 
 
@@ -434,13 +532,19 @@ def make_choices_utility_based(
 ) -> tuple[pd.Series, pd.Series]:
     trace_label = tracing.extend_trace_label(trace_label, "make_choices_utility_based")
 
-    # TODO-EET: index of choices for nested utilities is different than unnested - this needs to be consistent for
-    #  turning indexes into alternative names to keep code changes to minimum for now
+    # For nested models, choices are mapped to `name_mapping` ordering inside the
+    # EET helper. For MNL, choices already follow the utilities column order.
     choices = make_choices_explicit_error_term(
         state, utilities, name_mapping, nest_spec, trace_label
     )
-    # TODO-EET: rands - log all zeros for now
+    # EET does not expose per-row random draws; return zeros for compatibility.
     rands = pd.Series(np.zeros_like(utilities.index.values), index=utilities.index)
+    if trace_label:
+        state.tracing.trace_df(
+            rands,
+            tracing.extend_trace_label(trace_label, "rands"),
+            columns=[None, "rand"],
+        )
     return choices, rands
 
 
