@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from pydantic import ValidationError
 
-from activitysim.core import config, input, pathbuilder, skim_dictionary, tracing, util
+from activitysim.core import input, skim_dictionary, util
 from activitysim.core.cleaning import recode_based_on_table
 from activitysim.core.configuration.network import NetworkSettings, TAZ_Settings
 from activitysim.core.skim_dict_factory import MemMapSkimFactory, NumpyArraySkimFactory

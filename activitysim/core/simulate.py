@@ -20,7 +20,6 @@ from activitysim.core import (
     config,
     configuration,
     logit,
-    pathbuilder,
     timing,
     tracing,
     util,
