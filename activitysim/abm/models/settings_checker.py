@@ -161,10 +161,6 @@ CHECKER_SETTINGS = {
         "settings_cls": InitializeTableSettings,
         "settings_file": "initialize_landuse.yaml",
     },
-    "initialize_los": {
-        "settings_cls": NetworkSettings,
-        "settings_file": "network_los.yaml",
-    },
     "input_checker": {
         "settings_cls": PydanticReadable,  # input checker uses state.filesystem.read_model_settings directly
         "settings_file": "input_checker.yaml",
