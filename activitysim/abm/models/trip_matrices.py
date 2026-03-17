@@ -62,15 +62,13 @@ def write_trip_matrices(
     then aggregates trip counts and writes OD matrices to OMX.  Save annotated
     trips table to pipeline if desired.
 
-    Writes taz trip tables for one and two zone system.  Writes taz and tap
-    trip tables for three zone system.  Add ``is_tap:True`` to the settings file
-    to identify an output matrix as tap level trips as opposed to taz level trips.
+    Writes taz trip tables for one and two zone system.  Add ``is_tap:True`` to
+    the settings file to identify an output matrix as tap level trips as opposed
+    to taz level trips.
 
     For one zone system, uses the land use table for the set of possible tazs.
-    For two zone system, uses the taz skim zone names for the set of possible tazs.
-    For three zone system, uses the taz skim zone names for the set of possible tazs
-    and uses the tap skim zone names for the set of possible taps.
-
+    For two zone system, uses the taz skim zone names for the set of possible
+    tazs.
     """
 
     if trips is None:

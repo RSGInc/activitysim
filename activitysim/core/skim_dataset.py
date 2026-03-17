@@ -603,14 +603,14 @@ def load_sparse_maz_skims(
     dataset : xarray.Dataset
         The existing dataset at TAZ resolution only.
     land_use_index : pandas.Index
-        The index of the land use table.  For two and three zone systems,
+        The index of the land use table.  For two zone systems,
         these index values should be MAZ identifiers.
     remapper : dict, optional
         A dictionary mapping where the keys are the original (nominal) zone
         id's, and the values are the recoded (typically zero-based contiguous)
         zone id's.  Recoding improves runtime efficiency.
     zone_system : int
-        Currently 1, 2 and 3 are supported.
+        Currently 1 and 2 are supported.
     maz2taz_file_name : str
     maz_to_maz_tables : Collection[]
     max_blend_distance : optional
