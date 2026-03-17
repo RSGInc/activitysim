@@ -210,9 +210,7 @@ def write_trip_matrices(
         trips_df["origin"] = trips_df["true_origin"]
         trips_df["destination"] = trips_df["true_destination"]
         del trips_df["true_origin"], trips_df["true_destination"]
-        if (
-            network_los.zone_system == los.TWO_ZONE
-        ):
+        if network_los.zone_system == los.TWO_ZONE:
             trips_df["otaz"] = (
                 state.get_table("land_use").reindex(trips_df["origin"]).TAZ.tolist()
             )

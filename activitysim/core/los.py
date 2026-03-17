@@ -697,7 +697,7 @@ class Network_LOS(object):
 
     def get_mazs(self):
         # FIXME - should compute on init?
-        assert self.zone_system  == TWO_ZONE
+        assert self.zone_system == TWO_ZONE
         mazs = self.maz_taz_df.MAZ.values
         assert isinstance(mazs, np.ndarray)
         return mazs
