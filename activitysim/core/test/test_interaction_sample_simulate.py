@@ -20,7 +20,7 @@ def test_interaction_sample_simulate_parity(state):
     # Run interaction_sample_simulate with and without explicit error terms and check that results are similar.
 
     num_choosers = 100_000
-    num_alts_per_chooser = 5 # small sample size to keep things simple
+    num_alts_per_chooser = 5  # small sample size to keep things simple
 
     # Create random choosers
     rng = np.random.default_rng(42)
@@ -54,7 +54,7 @@ def test_interaction_sample_simulate_parity(state):
     state.rng().set_base_seed(42)
     state.rng().add_channel("person_id", choosers)
     state.rng().begin_step("test_step_mnl")
-    
+
     choices_mnl = interaction_sample_simulate.interaction_sample_simulate(
         state,
         choosers,
@@ -98,12 +98,13 @@ def test_interaction_sample_simulate_parity(state):
             f"mnl={share_mnl:.4f}, explicit={share_explicit:.4f}, diff={diff:.4f}"
         )
 
+
 def test_interaction_sample_simulate_eet_unavailable_alternatives(state):
     # Test that EET handles unavailable alternatives in sample simulation
-    
+
     num_choosers = 10
     num_alts_per_chooser = 5
-    
+
     choosers = pd.DataFrame(
         {"chooser_attr": np.ones(num_choosers)},
         index=pd.Index(range(num_choosers), name="person_id"),
@@ -112,7 +113,7 @@ def test_interaction_sample_simulate_eet_unavailable_alternatives(state):
     # For each chooser, 2 attractive alts, 3 unavailable
     alt_attrs = [10.0, 10.0, -1000.0, -1000.0, -1000.0] * num_choosers
     alt_ids = [0, 1, 2, 3, 4] * num_choosers
-    
+
     alternatives = pd.DataFrame(
         {
             "alt_attr": alt_attrs,

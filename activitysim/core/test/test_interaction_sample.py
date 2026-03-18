@@ -46,7 +46,7 @@ def test_interaction_sample_parity(state):
     state.rng().set_base_seed(42)
     state.rng().add_channel("person_id", choosers)
     state.rng().begin_step("test_step_mnl")
-    
+
     choices_mnl = interaction_sample.interaction_sample(
         state,
         choosers,
@@ -57,7 +57,7 @@ def test_interaction_sample_parity(state):
     )
 
     # Run _with_ explicit error terms
-    state.init_state() # reset the state to rerun with same seed
+    state.init_state()  # reset the state to rerun with same seed
     state.settings.use_explicit_error_terms = True
     state.rng().set_base_seed(42)
     state.rng().add_channel("person_id", choosers)
@@ -82,7 +82,9 @@ def test_interaction_sample_parity(state):
     # In interaction_sample, choices_explicit and choices_mnl are DataFrames with sampled alternatives.
     # The statistics of chosen alternatives should be similar.
     mnl_counts = choices_mnl["alt_id"].value_counts(normalize=True).sort_index()
-    explicit_counts = choices_explicit["alt_id"].value_counts(normalize=True).sort_index()
+    explicit_counts = (
+        choices_explicit["alt_id"].value_counts(normalize=True).sort_index()
+    )
 
     # Check top choices overlap significantly or shares are close
     all_alts = set(mnl_counts.index) | set(explicit_counts.index)
@@ -95,13 +97,12 @@ def test_interaction_sample_parity(state):
             f"mnl={share_mnl:.4f}, explicit={share_explicit:.4f}, diff={diff:.4f}"
         )
 
+
 def test_interaction_sample_eet_unavailable_alternatives(state):
     # Test that EET handles unavailable alternatives in sampling
-    
     num_choosers = 100
     num_alts = 10
     sample_size = 2
-    
     choosers = pd.DataFrame(
         {"chooser_attr": np.ones(num_choosers)},
         index=pd.Index(range(num_choosers), name="person_id"),
@@ -109,7 +110,7 @@ def test_interaction_sample_eet_unavailable_alternatives(state):
 
     # Alt 0-4 are attractive, Alt 5-9 are "unavailable"
     alternatives = pd.DataFrame(
-        {"alt_attr": [10.0]*5 + [-1000.0]*5},
+        {"alt_attr": [10.0] * 5 + [-1000.0] * 5},
         index=pd.Index(range(num_alts), name="alt_id"),
     )
 

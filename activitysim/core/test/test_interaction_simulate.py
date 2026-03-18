@@ -46,7 +46,7 @@ def test_interaction_simulate_explicit_error_terms_parity(state):
     state.rng().set_base_seed(42)  # Set seed BEFORE adding channels or steps
     state.rng().add_channel("person_id", choosers)
     state.rng().begin_step("test_step_mnl")
-    
+
     choices_mnl = interaction_simulate.interaction_simulate(
         state,
         choosers,
@@ -56,7 +56,7 @@ def test_interaction_simulate_explicit_error_terms_parity(state):
     )
 
     # Run _with_ explicit error terms
-    state.init_state() # reset the state to rerun with same seed
+    state.init_state()  # reset the state to rerun with same seed
     state.settings.use_explicit_error_terms = True
     state.rng().set_base_seed(42)
     state.rng().add_channel("person_id", choosers)
@@ -90,13 +90,14 @@ def test_interaction_simulate_explicit_error_terms_parity(state):
             f"mnl={share_mnl:.4f}, explicit={share_explicit:.4f}, diff={diff:.4f}"
         )
 
+
 def test_interaction_simulate_eet_unavailable_alternatives(state):
     # Test that EET handles unavailable alternatives (very low utilities)
     # similarly to MNL (zero probabilities).
-    
+
     num_choosers = 100
     num_alts = 5
-    
+
     choosers = pd.DataFrame(
         {"chooser_attr": np.ones(num_choosers)},
         index=pd.Index(range(num_choosers), name="person_id"),
@@ -132,15 +133,18 @@ def test_interaction_simulate_eet_unavailable_alternatives(state):
     assert not choices_eet.isna().any()
 
     # Choices should only be from Alt 0 or 1
-    assert choices_eet.isin([0, 1]).all(), f"EET picked an 'unavailable' alternative: {choices_eet[~choices_eet.isin([0, 1])]}"
+    assert choices_eet.isin(
+        [0, 1]
+    ).all(), f"EET picked an 'unavailable' alternative: {choices_eet[~choices_eet.isin([0, 1])]}"
+
 
 def test_interaction_simulate_eet_large_utilities(state):
     # Test that EET handles very large utilities without overflow issues
     # that might occur in exp(util) calculations in standard MNL.
-    
+
     num_choosers = 10
     num_alts = 2
-    
+
     choosers = pd.DataFrame(
         {"chooser_attr": np.ones(num_choosers)},
         index=pd.Index(range(num_choosers), name="person_id"),
@@ -170,7 +174,7 @@ def test_interaction_simulate_eet_large_utilities(state):
         spec,
         sample_size=num_alts,
     )
-    
+
     assert not choices_eet.isna().any()
     # With such a large difference, Alt 1 should be the dominant choice
     assert (choices_eet == 1).all()
