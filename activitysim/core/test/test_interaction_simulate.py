@@ -20,8 +20,8 @@ def test_interaction_simulate_explicit_error_terms_parity(state):
     # Run interaction_simulate with and without explicit error terms and check that results are similar.
 
     # Keep this large enough for stable parity checks without overloading CI.
-    num_choosers = 20_000
-    num_alts = 10
+    num_choosers = 100_000
+    num_alts = 5
     sample_size = num_alts
 
     # Create random choosers and alternatives

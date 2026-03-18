@@ -92,7 +92,7 @@ def test_interaction_sample_parity(state):
         share_mnl = mnl_counts.get(alt, 0)
         share_explicit = explicit_counts.get(alt, 0)
         diff = abs(share_mnl - share_explicit)
-        assert diff < 0.05, (
+        assert diff < 0.01, (
             f"Large discrepancy at alt {alt}: "
             f"mnl={share_mnl:.4f}, explicit={share_explicit:.4f}, diff={diff:.4f}"
         )
