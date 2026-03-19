@@ -72,7 +72,7 @@ def make_sample_choices_utility_based(
     del rands
     chunk_sizer.log_df(trace_label, "rands", None)
 
-    chooser_idx = np.tile(np.arange(utilities.shape[0]), sample_size)
+    chooser_idx = np.repeat(np.arange(utilities.shape[0]), sample_size)
     chunk_sizer.log_df(trace_label, "chooser_idx", chooser_idx)
 
     probs = logit.utils_to_probs(
