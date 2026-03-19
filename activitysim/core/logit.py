@@ -225,9 +225,6 @@ def utils_to_probs(
         if True value rows in which all utility alts are EXP_UTIL_MIN will result
         in rows in probs to have all zero probability (and not sum to 1.0)
         This is for the benefit of calculating probabilities of nested logit nests
-        When allow_zero_probs is True, overflow protection is disabled (with a warning)
-        to preserve zero-probability rows. For large float32 utilities, overflow
-        protection is still enabled and may raise a ValueError.
 
     trace_choosers : pandas.dataframe
         the choosers df (for interaction_simulate) to facilitate the reporting of hh_id
