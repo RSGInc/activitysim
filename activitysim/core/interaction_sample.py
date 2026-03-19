@@ -58,31 +58,25 @@ def make_sample_choices_utility_based(
             utilities = utilities[~zero_probs]
             choosers = choosers[~zero_probs]
 
-    utils_array = utilities.to_numpy()
-    chunk_sizer.log_df(trace_label, "utils_array", utils_array)
-    chosen_destinations = []
-
-    rands = state.get_rn_generator().gumbel_for_df(utilities, n=alternative_count)
+    rands = state.get_rn_generator().gumbel_for_df(
+        utilities, n=alternative_count * sample_size
+    )
     chunk_sizer.log_df(trace_label, "rands", rands)
 
-    # TODO-EET [janzill Jun2022]: using for-loop to keep memory usage low, an array of dimension
-    #  (len(choosers), alternative_count, sample_size) can get very large. Probably better to
-    #  use chunking for this.
-    for i in range(sample_size):
-        # created this once for memory logging
-        if i > 0:
-            rands = state.get_rn_generator().gumbel_for_df(
-                utilities, n=alternative_count
-            )
-        chosen_destinations.append(np.argmax(utils_array + rands, axis=1))
-    chosen_destinations = np.concatenate(chosen_destinations, axis=0)
+    # duplicate utils sample_size times along third axis, then add reshaped randoms to it
+    full_utils = np.tile(
+        utilities.to_numpy()[:, :, np.newaxis], (1, 1, sample_size)
+    ) + rands.reshape((utilities.shape[0], alternative_count, sample_size))
+    chunk_sizer.log_df(trace_label, "full_utils", full_utils)
 
-    chunk_sizer.log_df(trace_label, "chosen_destinations", chosen_destinations)
-
-    del utils_array
-    chunk_sizer.log_df(trace_label, "utils_array", None)
     del rands
     chunk_sizer.log_df(trace_label, "rands", None)
+
+    # choose maximum along all alternatives (axis 1) for all choosers and samples
+    chosen_destinations = np.argmax(full_utils, axis=1).flatten()
+    chunk_sizer.log_df(trace_label, "chosen_destinations", chosen_destinations)
+    del full_utils
+    chunk_sizer.log_df(trace_label, "full_utils", None)
 
     chooser_idx = np.tile(np.arange(utilities.shape[0]), sample_size)
     chunk_sizer.log_df(trace_label, "chooser_idx", chooser_idx)
