@@ -430,7 +430,7 @@ def make_choices_explicit_error_term_nl(
         ),
         axis=1,
     )
-    missing_choices = np.isnan(choices)  # TODO: should we check for infs here too?
+    missing_choices = choices.isnull()  # TODO: should we check for infs here too?
     if missing_choices.any() and not allow_bad_utils:
         report_bad_choices(
             state,
