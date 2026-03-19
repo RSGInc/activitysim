@@ -67,7 +67,7 @@ def make_sample_choices_utility_based(
     rands += utilities.to_numpy()[:, :, np.newaxis]
 
     # choose maximum along all alternatives (axis 1) for all choosers and samples
-    chosen_destinations = np.argmax(rands, axis=1).flatten()
+    chosen_destinations = np.argmax(rands, axis=1).reshape(-1)
     chunk_sizer.log_df(trace_label, "chosen_destinations", chosen_destinations)
     del rands
     chunk_sizer.log_df(trace_label, "rands", None)
