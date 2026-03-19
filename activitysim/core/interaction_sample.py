@@ -63,11 +63,13 @@ def make_sample_choices_utility_based(
     )
     chunk_sizer.log_df(trace_label, "rands", rands)
 
-    # duplicate utils sample_size times along third axis, then add reshaped randoms to it
-    full_utils = np.tile(
-        utilities.to_numpy()[:, :, np.newaxis], (1, 1, sample_size)
-    ) + rands.reshape((utilities.shape[0], alternative_count, sample_size))
-    chunk_sizer.log_df(trace_label, "full_utils", full_utils)
+    rands = rands.reshape((utilities.shape[0], alternative_count, sample_size))
+    rands += utilities.to_numpy()[:, :, np.newaxis]
+    # # duplicate utils sample_size times along third axis, then add reshaped randoms to it
+    # full_utils = np.tile(
+    #     utilities.to_numpy()[:, :, np.newaxis], (1, 1, sample_size)
+    # ) + rands.reshape((utilities.shape[0], alternative_count, sample_size))
+    # chunk_sizer.log_df(trace_label, "full_utils", full_utils)
 
     del rands
     chunk_sizer.log_df(trace_label, "rands", None)
