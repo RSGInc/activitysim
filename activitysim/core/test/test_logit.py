@@ -250,6 +250,18 @@ def test_make_choices_only_one():
     )
 
 
+def test_make_choices_real_probs(utilities):
+    state = workflow.State().default_settings()
+    probs = logit.utils_to_probs(state, utilities, trace_label=None)
+    choices, rands = logit.make_choices(state, probs)
+
+    pdt.assert_series_equal(
+        choices,
+        pd.Series([1, 2], index=[0, 1]),
+        check_dtype=False,
+    )
+
+
 def test_make_choices_matches_random_draws():
     class DummyRNG:
         def random_for_df(self, df, n=1):
@@ -463,7 +475,9 @@ def test_make_choices_vs_eet_same_distribution():
     """With many draws, make_choices (probability-based) and
     make_choices_explicit_error_term_mnl (EET) should produce roughly the
     same empirical choice-frequency distribution for the same utilities."""
-    n_draws = 100_000
+    n_draws = 1_000_000
+    a_tol = 0.001
+    r_tol = 0.01
     utils_values = [5.0, 6.0, 7.0, 8.0, 9.0]
     n_alts = len(utils_values)
     columns = ["a", "b", "c", "d", "e"]
@@ -506,7 +520,13 @@ def test_make_choices_vs_eet_same_distribution():
     mc_fracs = np.bincount(choices_mc.values.astype(int), minlength=n_alts) / n_draws
     eet_fracs = np.bincount(choices_eet.values.astype(int), minlength=n_alts) / n_draws
 
-    np.testing.assert_allclose(mc_fracs, eet_fracs, atol=0.005)
+    np.testing.assert_allclose(mc_fracs, eet_fracs, atol=a_tol, rtol=r_tol)
+    np.testing.assert_allclose(
+        mc_fracs, probs.iloc[0].to_numpy(), atol=a_tol, rtol=r_tol
+    )
+    np.testing.assert_allclose(
+        eet_fracs, probs.iloc[0].to_numpy(), atol=a_tol, rtol=r_tol
+    )
 
 
 @pytest.fixture(scope="module")
