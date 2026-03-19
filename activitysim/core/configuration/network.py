@@ -213,7 +213,6 @@ class NetworkSettings(PydanticReadable, extra="forbid"):
 
     * 1 - TAZ only.
     * 2 - MAZ and TAZ.
-    * 3 - MAZ, TAZ, and TAP
     """
 
     taz_skims: Union[str, list[str], TAZ_Settings] = None

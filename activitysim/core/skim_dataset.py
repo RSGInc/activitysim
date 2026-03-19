@@ -838,11 +838,7 @@ def load_skim_dataset_to_shared_memory(state, skim_tag="taz") -> xr.Dataset:
             ]
             d = sh.dataset.from_omx_3d(
                 omx_file_handles,
-                index_names=(
-                    ("otap", "dtap", "time_period")
-                    if skim_tag == "tap"
-                    else ("otaz", "dtaz", "time_period")
-                ),
+                index_names=("otaz", "dtaz", "time_period"),
                 time_periods=time_periods,
                 max_float_precision=max_float_precision,
                 ignore=state.settings.omx_ignore_patterns,
@@ -971,8 +967,3 @@ def load_skim_dataset_to_shared_memory(state, skim_tag="taz") -> xr.Dataset:
 @workflow.cached_object
 def skim_dataset(state: workflow.State) -> xr.Dataset:
     return load_skim_dataset_to_shared_memory(state)
-
-
-@workflow.cached_object
-def tap_dataset(state: workflow.State) -> xr.Dataset:
-    return load_skim_dataset_to_shared_memory(state, "tap")

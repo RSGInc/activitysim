@@ -327,7 +327,7 @@ class Network_LOS(object):
 
     def create_skim_dict(self, skim_tag, _override_offset_int=None):
         """
-        Create a new SkimDict of type specified by skim_tag (e.g. 'taz', 'maz' or 'tap')
+        Create a new SkimDict of type specified by skim_tag (e.g. 'taz', or 'maz')
 
         Parameters
         ----------
@@ -514,7 +514,7 @@ class Network_LOS(object):
 
     def get_skim_dict(self, skim_tag):
         """
-        Get SkimDict for the specified skim_tag (e.g. 'taz', 'maz', or 'tap')
+        Get SkimDict for the specified skim_tag (e.g. 'taz', or 'maz')
 
         Returns
         -------
@@ -535,11 +535,6 @@ class Network_LOS(object):
                     if f"dim_redirection_{dd}" in skim_dataset.attrs:
                         del skim_dataset.attrs[f"dim_redirection_{dd}"]
                 return SkimDataset(skim_dataset)
-        elif sharrow_enabled and skim_tag in ("tap"):
-            tap_dataset = self.state.get_injectable("tap_dataset")
-            from .skim_dataset import SkimDataset
-
-            return SkimDataset(tap_dataset)
         else:
             assert (
                 skim_tag in self.skim_dicts
