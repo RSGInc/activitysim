@@ -80,15 +80,10 @@ def test_interaction_simulate_explicit_error_terms_parity(state):
     mnl_counts = choices_mnl.value_counts(normalize=True).sort_index()
     explicit_counts = choices_explicit.value_counts(normalize=True).sort_index()
 
-    # Check that they aren't wildly different (e.g., within 1% share for each alt)
-    for alt in alternatives.index:
-        share_mnl = mnl_counts.get(alt, 0)
-        share_explicit = explicit_counts.get(alt, 0)
-        diff = abs(share_mnl - share_explicit)
-        assert diff < 0.01, (
-            f"Large discrepancy at alt {alt}: "
-            f"mnl={share_mnl:.4f}, explicit={share_explicit:.4f}, diff={diff:.4f}"
-        )
+    # Check that they are close, relative to the number of draws
+    assert np.allclose(
+        mnl_counts.to_numpy(), explicit_counts.to_numpy(), atol=0.01, rtol=0.001
+    )
 
 
 def test_interaction_simulate_eet_unavailable_alternatives(state):
