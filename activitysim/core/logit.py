@@ -381,7 +381,13 @@ def choose_from_tree(
 
 
 def make_choices_explicit_error_term_nl(
-    state, nested_utilities, alt_order_array, nest_spec, trace_label
+    state,
+    nested_utilities,
+    alt_order_array,
+    nest_spec,
+    trace_label,
+    trace_choosers=None,
+    allow_bad_utils=False,
 ):
     """
     Walk down the nesting tree and make a choice at each level using EET.
@@ -408,11 +414,6 @@ def make_choices_explicit_error_term_nl(
             nested_utilities, tracing.extend_trace_label(trace_label, "nested_utils")
         )
     nest_utils_for_choice = add_ev1_random(state, nested_utilities)
-    if trace_label:
-        state.tracing.trace_df(
-            nest_utils_for_choice,
-            tracing.extend_trace_label(trace_label, "nested_utils_eet"),
-        )
 
     all_alternatives = set(nest.name for nest in each_nest(nest_spec, type="leaf"))
     logit_nest_groups = group_nest_names_by_level(nest_spec)
@@ -429,34 +430,29 @@ def make_choices_explicit_error_term_nl(
         ),
         axis=1,
     )
-    missing_choices = choices.isnull()
-    if missing_choices.any():
+    missing_choices = np.isnan(choices)  # TODO: should we check for infs here too?
+    if missing_choices.any() and not allow_bad_utils:
         report_bad_choices(
             state,
             missing_choices,
             nested_utilities,
-            trace_label=tracing.extend_trace_label(trace_label, "no_choice"),
+            trace_label=tracing.extend_trace_label(trace_label, "bad_utils"),
             msg="no alternative selected",
-            raise_error=False,
+            # raise_error=False,
+            trace_choosers=trace_choosers,
         )
-    assert not missing_choices.any(), f"No choice for {trace_label}"
     choices = pd.Series(choices, index=nest_utils_for_choice.index)
 
     # In order for choice indexing to be consistent with MNL and cumsum MC choices, we need to index in the order
     #  alternatives were originally created before adding nest nodes that are not elemental alternatives
     choices = choices.map({v: k for k, v in enumerate(alt_order_array)})
 
-    if trace_label:
-        state.tracing.trace_df(
-            choices,
-            tracing.extend_trace_label(trace_label, "choices"),
-            columns=[None, "choice"],
-        )
-
     return choices
 
 
-def make_choices_explicit_error_term_mnl(state, utilities, trace_label):
+def make_choices_explicit_error_term_mnl(
+    state, utilities, trace_label, trace_choosers=None, allow_bad_utils=False
+) -> pd.Series:
     """
     Make EET choices for a multinomial logit model by adding EV1 errors.
 
@@ -484,36 +480,45 @@ def make_choices_explicit_error_term_mnl(state, utilities, trace_label):
             tracing.extend_trace_label(trace_label, "utilities_eet"),
         )
     choices = np.argmax(utilities_incl_unobs.to_numpy(), axis=1)
-    missing_choices = np.isnan(choices)
-    if missing_choices.any():
+    missing_choices = np.isnan(choices)  # TODO: should we check for infs here too?
+    if missing_choices.any() and not allow_bad_utils:
         report_bad_choices(
             state,
             missing_choices,
             utilities,
-            trace_label=tracing.extend_trace_label(trace_label, "no_choice"),
+            trace_label=tracing.extend_trace_label(trace_label, "bad_utils"),
             msg="no alternative selected",
-            raise_error=False,
+            # raise_error=False,
+            trace_choosers=trace_choosers,
         )
-    assert not missing_choices.any(), f"No choice for {trace_label}"
     choices = pd.Series(choices, index=utilities_incl_unobs.index)
-    if trace_label:
-        state.tracing.trace_df(
-            choices,
-            tracing.extend_trace_label(trace_label, "choices"),
-            columns=[None, "choice"],
-        )
+
     return choices
 
 
 def make_choices_explicit_error_term(
-    state, utilities, alt_order_array, nest_spec=None, trace_label=None
-):
+    state,
+    utilities,
+    alt_order_array,
+    nest_spec=None,
+    trace_label=None,
+    trace_choosers=None,
+    allow_bad_utils=False,
+) -> pd.Series:
     trace_label = tracing.extend_trace_label(trace_label, "make_choices_eet")
     if nest_spec is None:
-        choices = make_choices_explicit_error_term_mnl(state, utilities, trace_label)
+        choices = make_choices_explicit_error_term_mnl(
+            state, utilities, trace_label, trace_choosers, allow_bad_utils
+        )
     else:
         choices = make_choices_explicit_error_term_nl(
-            state, utilities, alt_order_array, nest_spec, trace_label
+            state,
+            utilities,
+            alt_order_array,
+            nest_spec,
+            trace_label,
+            trace_choosers,
+            allow_bad_utils,
         )
     return choices
 
@@ -525,23 +530,24 @@ def make_choices_utility_based(
     nest_spec=None,
     trace_label: str = None,
     trace_choosers=None,
-    allow_bad_probs=False,
+    allow_bad_utils=False,
 ) -> tuple[pd.Series, pd.Series]:
     trace_label = tracing.extend_trace_label(trace_label, "make_choices_utility_based")
 
     # For nested models, choices are mapped to `name_mapping` ordering inside the
     # EET helper. For MNL, choices already follow the utilities column order.
     choices = make_choices_explicit_error_term(
-        state, utilities, name_mapping, nest_spec, trace_label
+        state,
+        utilities,
+        name_mapping,
+        nest_spec,
+        trace_label,
+        trace_choosers=trace_choosers,
+        allow_bad_utils=allow_bad_utils,
     )
     # EET does not expose per-row random draws; return zeros for compatibility.
     rands = pd.Series(np.zeros_like(utilities.index.values), index=utilities.index)
-    if trace_label:
-        state.tracing.trace_df(
-            rands,
-            tracing.extend_trace_label(trace_label, "rands"),
-            columns=[None, "rand"],
-        )
+
     return choices, rands
 
 
