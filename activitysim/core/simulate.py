@@ -9,7 +9,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -32,7 +32,7 @@ from activitysim.core.configuration.logit import (
     LogitNestSpec,
     TemplatedLogitComponentSettings,
 )
-from activitysim.core.estimation import Estimator
+from activitysim.core.exceptions import ModelConfigurationError
 from activitysim.core.fast_eval import fast_eval
 from activitysim.core.simulate_consts import (
     ALT_LOSER_UTIL,
@@ -40,7 +40,9 @@ from activitysim.core.simulate_consts import (
     SPEC_EXPRESSION_NAME,
     SPEC_LABEL_NAME,
 )
-from activitysim.core.exceptions import ModelConfigurationError
+
+if TYPE_CHECKING:
+    from activitysim.core.estimation import Estimator
 
 logger = logging.getLogger(__name__)
 
