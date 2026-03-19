@@ -65,20 +65,12 @@ def make_sample_choices_utility_based(
 
     rands = rands.reshape((utilities.shape[0], alternative_count, sample_size))
     rands += utilities.to_numpy()[:, :, np.newaxis]
-    # # duplicate utils sample_size times along third axis, then add reshaped randoms to it
-    # full_utils = np.tile(
-    #     utilities.to_numpy()[:, :, np.newaxis], (1, 1, sample_size)
-    # ) + rands.reshape((utilities.shape[0], alternative_count, sample_size))
-    # chunk_sizer.log_df(trace_label, "full_utils", full_utils)
-
-    del rands
-    chunk_sizer.log_df(trace_label, "rands", None)
 
     # choose maximum along all alternatives (axis 1) for all choosers and samples
-    chosen_destinations = np.argmax(full_utils, axis=1).flatten()
+    chosen_destinations = np.argmax(rands, axis=1).flatten()
     chunk_sizer.log_df(trace_label, "chosen_destinations", chosen_destinations)
-    del full_utils
-    chunk_sizer.log_df(trace_label, "full_utils", None)
+    del rands
+    chunk_sizer.log_df(trace_label, "rands", None)
 
     chooser_idx = np.tile(np.arange(utilities.shape[0]), sample_size)
     chunk_sizer.log_df(trace_label, "chooser_idx", chooser_idx)
