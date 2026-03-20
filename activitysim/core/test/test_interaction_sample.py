@@ -234,54 +234,31 @@ class _DummyRngUtilityBased:
         return self.rands_3d.reshape(-1)
 
 
-def test_make_sample_choices_utility_based_repeat_alignment(monkeypatch):
-    # Construct a deterministic case where chooser/sample alignment is visible in the output.
-    # This is a regression test for a bug where the chooser/sample alignment was wrong, causing
-    # the wrong probabilities to be attached to chosen alternatives.
-    chooser_index = pd.Index([10, 20, 30], name="person_id")
+def test_make_sample_choices_utility_based_repeat_alignment_chooser_dominant_heterogeneity():
+    # Edge case: utilities are close across alternatives but vary strongly by chooser.
+    # This is where wrong chooser/sample alignment can hide in aggregate checks.
+    chooser_index = pd.Index([101, 102, 103, 104, 105, 106], name="person_id")
     choosers = pd.DataFrame(index=chooser_index)
-    alternatives = pd.DataFrame(index=pd.Index([100, 101, 102, 103], name="alt_id"))
+    alternatives = pd.DataFrame(index=pd.Index([0, 1, 2, 3], name="alt_id"))
 
     n_choosers = len(choosers)
     n_alts = len(alternatives)
-    sample_size = 2
+    sample_size = 3
+
+    # Very small alternative differences...
+    alt_signal = np.array([0.00, 0.01, 0.02, 0.03], dtype=np.float64)
+    # ...but very large chooser sensitivity differences.
+    chooser_scale = np.array([-500.0, -200.0, -50.0, 50.0, 200.0, 500.0])
 
     utilities = pd.DataFrame(
-        np.zeros((n_choosers, n_alts)),
+        chooser_scale[:, np.newaxis] * alt_signal[np.newaxis, :],
         index=chooser_index,
     )
 
-    # Winner alternatives by chooser x sample.
-    winners = np.array(
-        [
-            [0, 1],
-            [2, 3],
-            [1, 0],
-        ],
-        dtype=np.int64,
-    )
-
-    # Build gumbel draws so argmax along alternatives yields the winners above.
-    rands_3d = np.full((n_choosers, n_alts, sample_size), -1000.0)
-    for i in range(n_choosers):
-        for s in range(sample_size):
-            rands_3d[i, winners[i, s], s] = 1000.0
-
-    # Encode chooser/alt identity in probabilities so bad indexing is obvious.
-    probs_df = pd.DataFrame(
-        [
-            [0, 1, 2, 3],
-            [10, 11, 12, 13],
-            [20, 21, 22, 23],
-        ],
-        index=chooser_index,
-    )
-
-    monkeypatch.setattr(
-        interaction_sample.logit, "utils_to_probs", lambda *_a, **_k: probs_df
-    )
-
+    # No random noise: chosen alternative is deterministic argmax of utilities.
+    rands_3d = np.zeros((n_choosers, n_alts, sample_size), dtype=np.float64)
     state = _DummyState(_DummyRngUtilityBased(rands_3d))
+
     out = interaction_sample.make_sample_choices_utility_based(
         state=state,
         choosers=choosers,
@@ -291,16 +268,31 @@ def test_make_sample_choices_utility_based_repeat_alignment(monkeypatch):
         alternative_count=n_alts,
         alt_col_name="alt_id",
         allow_zero_probs=False,
-        trace_label="test_repeat_alignment",
+        trace_label="test_repeat_alignment_chooser_heterogeneity",
         chunk_sizer=_DummyChunkSizer(),
     )
 
-    chosen_flat = winners.reshape(-1)
+    # Reconstruct expected indexing behavior.
+    chosen_2d = np.argmax(
+        rands_3d + utilities.to_numpy()[:, :, np.newaxis],
+        axis=1,
+    )
+    chosen_flat = chosen_2d.reshape(-1)
+
     chooser_repeat = np.repeat(np.arange(n_choosers), sample_size)
     chooser_tile = np.tile(np.arange(n_choosers), sample_size)
 
-    expected_prob_repeat = probs_df.to_numpy()[chooser_repeat, chosen_flat]
-    wrong_prob_tile = probs_df.to_numpy()[chooser_tile, chosen_flat]
+    probs = interaction_sample.logit.utils_to_probs(
+        state,
+        utilities,
+        allow_zero_probs=False,
+        trace_label="test_repeat_alignment_chooser_heterogeneity",
+        overflow_protection=True,
+        trace_choosers=choosers,
+    ).to_numpy()
+
+    expected_prob_repeat = probs[chooser_repeat, chosen_flat]
+    wrong_prob_tile = probs[chooser_tile, chosen_flat]
 
     assert np.array_equal(out["prob"].to_numpy(), expected_prob_repeat)
     assert not np.array_equal(out["prob"].to_numpy(), wrong_prob_tile)
