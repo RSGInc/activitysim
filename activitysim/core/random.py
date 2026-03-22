@@ -9,8 +9,8 @@ from builtins import object, range
 import numpy as np
 import pandas as pd
 
-from activitysim.core.util import reindex
 from activitysim.core.exceptions import DuplicateLoadableObjectError, TableIndexError
+from activitysim.core.util import reindex
 
 from .tracing import print_elapsed_time
 
@@ -446,6 +446,21 @@ class Random(object):
         return self.channels[channel_name]
 
     # step handling
+
+    def reset_offsets_for_step(self, step_name):
+        """
+        Reset offsets for all channels for a new step
+
+        Parameters
+        ----------
+        step_name : str
+            pipeline step name for this step
+        """
+
+        assert self.step_name == step_name
+
+        for c in self.channels:
+            self.channels[c].row_states["offset"] = 0
 
     def begin_step(self, step_name):
         """

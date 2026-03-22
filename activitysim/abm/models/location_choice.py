@@ -15,10 +15,10 @@ from activitysim.core.configuration.logit import (
     TourLocationComponentSettings,
     TourModeComponentSettings,
 )
+from activitysim.core.exceptions import DuplicateWorkflowTableError
 from activitysim.core.interaction_sample import interaction_sample
 from activitysim.core.interaction_sample_simulate import interaction_sample_simulate
 from activitysim.core.util import reindex
-from activitysim.core.exceptions import DuplicateWorkflowTableError
 
 """
 The school/workplace location model predicts the zones in which various people will
@@ -1019,6 +1019,10 @@ def iterate_location_choice(
     ) = None  # initialize to None, will be populated in first iteration
 
     for iteration in range(1, max_iterations + 1):
+        # RESET RNG offsets to identical state on each iteration. This ensures that the same set of random numbers is
+        # used on each iteration.
+        state.get_rn_generator().reset_offsets_for_step(state.current_model_name)
+
         persons_merged_df_ = persons_merged_df.copy()
 
         if spc.use_shadow_pricing and iteration > 1:
