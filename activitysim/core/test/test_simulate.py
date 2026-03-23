@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os.path
+from pathlib import Path
 
 import numpy as np
 import numpy.testing as npt
@@ -10,7 +11,7 @@ import pandas as pd
 import pandas.testing as pdt
 import pytest
 
-from activitysim.core import simulate, workflow
+from activitysim.core import simulate, workflow, chunk
 
 
 @pytest.fixture
@@ -26,9 +27,7 @@ def spec_name(data_dir):
 @pytest.fixture
 def state(data_dir) -> workflow.State:
     state = workflow.State()
-    state.initialize_filesystem(
-        working_dir=os.path.dirname(__file__), data_dir=(data_dir,)
-    ).default_settings()
+    state.initialize_filesystem(working_dir=os.path.dirname(__file__), data_dir=(data_dir,)).default_settings()
     return state
 
 
@@ -54,9 +53,7 @@ def test_read_model_spec(state, spec_name):
 def test_eval_variables(state, spec, data):
     result = simulate.eval_variables(state, spec.index, data)
 
-    expected = pd.DataFrame(
-        [[1, 0, 4, 1], [0, 1, 4, 1], [0, 1, 5, 1]], index=data.index, columns=spec.index
-    )
+    expected = pd.DataFrame([[1, 0, 4, 1], [0, 1, 4, 1], [0, 1, 5, 1]], index=data.index, columns=spec.index)
 
     expected[expected.columns[0]] = expected[expected.columns[0]].astype(np.int8)
     expected[expected.columns[1]] = expected[expected.columns[1]].astype(np.int8)
@@ -88,3 +85,156 @@ def test_simple_simulate_chunked(state, data, spec):
     )
     expected = pd.Series([1, 1, 1], index=data.index)
     pdt.assert_series_equal(choices, expected, check_dtype=False)
+
+
+def test_eval_mnl_eet(data_dir):
+    """
+    Check that the same probabilities are gotten when using EET and calculating
+    probabilities directly for eval_mnl
+    """
+    # using eet state
+    eet_state = workflow.State()
+    eet_state.initialize_filesystem(working_dir=Path(os.path.dirname(__file__)), data_dir=(data_dir,)).default_settings()
+    eet_state.settings.use_explicit_error_terms = True
+
+    num_choosers = 100_000
+
+    np.random.seed(42)
+    data2 = pd.DataFrame(
+        {
+            "chooser_attr": np.random.rand(num_choosers),
+        },
+        index=pd.Index(range(num_choosers), name="person_id"),
+    )
+
+    spec2 = pd.DataFrame(
+        {"alt0": [1.0], "alt1": [2.0]},
+        index=pd.Index(["chooser_attr"], name="Expression"),
+    )
+
+    eet_state.rng().set_base_seed(42)
+    eet_state.rng().add_channel("person_id", data2)
+    eet_state.rng().begin_step("test_step_mnl")
+
+    chunk_sizer = chunk.ChunkSizer(eet_state, "", "", num_choosers)
+
+    choices_eet = simulate.eval_mnl(
+        state=eet_state,
+        choosers=data2,
+        spec=spec2,
+        locals_d=None,
+        custom_chooser=None,
+        estimator=None,
+        chunk_sizer=chunk_sizer,
+    )
+
+    # calculating probabilties from utility
+    prob_state = workflow.State()
+    prob_state.initialize_filesystem(working_dir=Path(os.path.dirname(__file__)), data_dir=(data_dir,)).default_settings()
+    prob_state.settings.use_explicit_error_terms = False
+
+    prob_state.rng().set_base_seed(42)
+    prob_state.rng().add_channel("person_id", data2)
+    prob_state.rng().begin_step("test_step_mnl")
+
+    choices_mnl = simulate.eval_mnl(
+        state=prob_state,
+        choosers=data2,
+        spec=spec2,
+        locals_d=None,
+        custom_chooser=None,
+        estimator=None,
+        chunk_sizer=chunk_sizer,
+    )
+
+    mnl_counts = choices_mnl.value_counts(normalize=True).sort_index()
+    explicit_counts = choices_eet.value_counts(normalize=True).sort_index()
+
+    # Check that they are similar
+    for i, alt in enumerate(["alt0", "alt2"]):
+        share_mnl = mnl_counts.get(i, 0)
+        share_explicit = explicit_counts.get(i, 0)
+        assert abs(share_mnl - share_explicit) < 0.01, f"Large discrepancy at alt {alt}: {share_mnl} vs {share_explicit}"
+
+
+def test_eval_nl_eet(data_dir):
+    """
+    Check that the same probabilities are gotten when using EET and calculating
+    probabilities directly for eval_nl
+    """
+    # using eet state
+    eet_state = workflow.State()
+    eet_state.initialize_filesystem(working_dir=Path(os.path.dirname(__file__)), data_dir=(data_dir,)).default_settings()
+    eet_state.settings.use_explicit_error_terms = True
+
+    num_choosers = 100_000
+
+    np.random.seed(42)
+    data2 = pd.DataFrame(
+        {
+            "chooser_attr": np.random.rand(num_choosers),
+        },
+        index=pd.Index(range(num_choosers), name="person_id"),
+    )
+
+    spec2 = pd.DataFrame(
+        {"alt1": [2.0], "alt0.0": [0.5], "alt0.1": [0.2]},
+        index=pd.Index(["chooser_attr"], name="Expression"),
+    )
+
+    nest_spec = {
+        "name": "root",
+        "coefficient": 1.0,
+        "alternatives": [
+            {"name": "alt0", "coefficient": 0.5, "alternatives": ["alt0.0", "alt0.1"]},
+            "alt1",
+        ],
+    }
+
+    eet_state.rng().set_base_seed(42)  # Set seed BEFORE adding channels or steps
+    eet_state.rng().add_channel("person_id", data2)
+    eet_state.rng().begin_step("test_step_mnl")
+
+    chunk_sizer = chunk.ChunkSizer(eet_state, "", "", num_choosers)
+
+    choices_eet = simulate.eval_nl(
+        state=eet_state,
+        choosers=data2,
+        spec=spec2,
+        nest_spec=nest_spec,
+        locals_d={},
+        custom_chooser=None,
+        estimator=None,
+        trace_label="test",
+        chunk_sizer=chunk_sizer,
+    )
+
+    # calculating probabilties from utility
+    prob_state = workflow.State()
+    prob_state.initialize_filesystem(working_dir=Path(os.path.dirname(__file__)), data_dir=(data_dir,)).default_settings()
+    prob_state.settings.use_explicit_error_terms = False
+
+    prob_state.rng().set_base_seed(42)
+    prob_state.rng().add_channel("person_id", data2)
+    prob_state.rng().begin_step("test_step_mnl")
+
+    choices_mnl = simulate.eval_nl(
+        state=prob_state,
+        choosers=data2,
+        spec=spec2,
+        nest_spec=nest_spec,
+        locals_d={},
+        custom_chooser=None,
+        trace_label="test",
+        estimator=None,
+        chunk_sizer=chunk_sizer,
+    )
+
+    mnl_counts = choices_mnl.value_counts(normalize=True).sort_index()
+    explicit_counts = choices_eet.value_counts(normalize=True).sort_index()
+
+    # Check that they are similar
+    for i, alt in enumerate(["alt0", "alt2"]):
+        share_mnl = mnl_counts.get(i, 0)
+        share_explicit = explicit_counts.get(i, 0)
+        assert abs(share_mnl - share_explicit) < 0.01, f"Large discrepancy at alt {alt}: {share_mnl} vs {share_explicit}"
