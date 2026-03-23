@@ -147,7 +147,10 @@ def test_build_patterns(trips):
 def test_get_tour_legs(trips):
     tour_legs = tdc.get_tour_legs(trips)
     assert tour_legs.index.name == tdc.TOUR_LEG_ID
-    assert np.unique(tour_legs[tdc.TOUR_ID].values).shape[0] == np.unique(trips[tdc.TOUR_ID].values).shape[0]
+    assert (
+        np.unique(tour_legs[tdc.TOUR_ID].values).shape[0]
+        == np.unique(trips[tdc.TOUR_ID].values).shape[0]
+    )
 
 
 def test_generate_alternative(trips):
@@ -197,7 +200,9 @@ def test_tdc_explicit_error_terms_parity(model_spec, trips):
     large_trips = pd.concat([trips] * 500).reset_index(drop=True)
     large_trips.index.name = "trip_id"
     # Ensure tour_ids are distinct for the expanded set
-    large_trips["tour_id"] = large_trips.groupby("tour_id").cumcount() * 1000 + large_trips["tour_id"]
+    large_trips["tour_id"] = (
+        large_trips.groupby("tour_id").cumcount() * 1000 + large_trips["tour_id"]
+    )
 
     # Trip departure choice uses tour_leg_id as the random channel index
     tour_legs = tdc.get_tour_legs(large_trips)

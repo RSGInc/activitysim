@@ -56,14 +56,20 @@ def candidates():
         elif comp == "CHILDREN":
             df.loc[indices, "adult"] = False
             # Some children are preschoolers
-            df.loc[rng.choice(indices, len(indices) // 4, replace=False), "person_is_preschool"] = True
+            df.loc[
+                rng.choice(indices, len(indices) // 4, replace=False),
+                "person_is_preschool",
+            ] = True
         elif comp == "MIXED":
             # For each tour, make the first person an adult, rest children
             tour_start_indices = indices[::num_candidates_per_tour]
             df.loc[tour_start_indices, "adult"] = True
             # Other members are children, some might be preschoolers
             other_indices = indices[~indices.isin(tour_start_indices)]
-            df.loc[rng.choice(other_indices, len(other_indices) // 3, replace=False), "person_is_preschool"] = True
+            df.loc[
+                rng.choice(other_indices, len(other_indices) // 3, replace=False),
+                "person_is_preschool",
+            ] = True
 
     return df
 
@@ -130,7 +136,9 @@ def test_jtp_explicit_error_terms_parity(candidates, model_spec):
 
     # Compare distributions of number of participants per tour
     # Choice 0 is 'participate'
-    no_eet_participation_counts = (choices_no_eet == 0).groupby(candidates.tour_id).sum()
+    no_eet_participation_counts = (
+        (choices_no_eet == 0).groupby(candidates.tour_id).sum()
+    )
     eet_participation_counts = (choices_eet == 0).groupby(candidates.tour_id).sum()
 
     dist_no_eet = no_eet_participation_counts.value_counts(normalize=True).sort_index()
@@ -140,7 +148,13 @@ def test_jtp_explicit_error_terms_parity(candidates, model_spec):
     pdt.assert_series_equal(dist_no_eet, dist_eet, atol=0.05, check_names=False)
 
     # Also check average participation by composition for deeper parity check
-    comp_parity_no_eet = no_eet_participation_counts.groupby(candidates.groupby("tour_id")["composition"].first()).mean()
-    comp_parity_eet = eet_participation_counts.groupby(candidates.groupby("tour_id")["composition"].first()).mean()
+    comp_parity_no_eet = no_eet_participation_counts.groupby(
+        candidates.groupby("tour_id")["composition"].first()
+    ).mean()
+    comp_parity_eet = eet_participation_counts.groupby(
+        candidates.groupby("tour_id")["composition"].first()
+    ).mean()
 
-    pdt.assert_series_equal(comp_parity_no_eet, comp_parity_eet, atol=0.1, check_names=False)
+    pdt.assert_series_equal(
+        comp_parity_no_eet, comp_parity_eet, atol=0.1, check_names=False
+    )

@@ -11,12 +11,12 @@ import pandas as pd
 import pandas.testing as pdt
 import pytest
 
-from activitysim.core import simulate, workflow, chunk
+from activitysim.core import chunk, simulate, workflow
 
 
 @pytest.fixture
 def data_dir():
-    return os.path.join(os.path.dirname(__file__), "data")
+    return Path(__file__).parent / "data"
 
 
 @pytest.fixture
@@ -26,8 +26,8 @@ def spec_name(data_dir):
 
 @pytest.fixture
 def state(data_dir) -> workflow.State:
-    state = workflow.State()
-    state.initialize_filesystem(working_dir=os.path.dirname(__file__), data_dir=(data_dir,)).default_settings()
+    state = workflow.State().default_settings()
+    state.initialize_filesystem(working_dir=Path(__file__).parent, data_dir=(data_dir,))
     return state
 
 
@@ -41,7 +41,9 @@ def data(data_dir):
     return pd.read_csv(os.path.join(data_dir, "data.csv"))
 
 
-def test_read_model_spec(state, spec_name):
+def test_read_model_spec(
+    state, spec_name
+):  # NOTE: this tests code not directly related to simulate
     spec = state.filesystem.read_model_spec(file_name=spec_name)
 
     assert len(spec) == 4
@@ -53,8 +55,14 @@ def test_read_model_spec(state, spec_name):
 def test_eval_variables(state, spec, data):
     result = simulate.eval_variables(state, spec.index, data)
 
-    expected = pd.DataFrame([[1, 0, 4, 1], [0, 1, 4, 1], [0, 1, 5, 1]], index=data.index, columns=spec.index)
+    expected_result = [
+        [1, 0, 4, 1],
+        [0, 1, 4, 1],
+        [0, 1, 5, 1],
+    ]
+    expected = pd.DataFrame(expected_result, index=data.index, columns=spec.index)
 
+    # type-cast to match the expected result dtypes
     expected[expected.columns[0]] = expected[expected.columns[0]].astype(np.int8)
     expected[expected.columns[1]] = expected[expected.columns[1]].astype(np.int8)
     expected[expected.columns[2]] = expected[expected.columns[2]].astype(np.int64)
@@ -87,15 +95,8 @@ def test_simple_simulate_chunked(state, data, spec):
     pdt.assert_series_equal(choices, expected, check_dtype=False)
 
 
-def test_eval_mnl_eet(data_dir):
-    """
-    Check that the same probabilities are gotten when using EET and calculating
-    probabilities directly for eval_mnl
-    """
-    # using eet state
-    eet_state = workflow.State()
-    eet_state.initialize_filesystem(working_dir=Path(os.path.dirname(__file__)), data_dir=(data_dir,)).default_settings()
-    eet_state.settings.use_explicit_error_terms = True
+def test_eval_mnl_eet(state):
+    # Check that the same counts are returned by eval_mnl when using EET and when not.
 
     num_choosers = 100_000
 
@@ -112,14 +113,17 @@ def test_eval_mnl_eet(data_dir):
         index=pd.Index(["chooser_attr"], name="Expression"),
     )
 
-    eet_state.rng().set_base_seed(42)
-    eet_state.rng().add_channel("person_id", data2)
-    eet_state.rng().begin_step("test_step_mnl")
+    # Set up a state with EET enabled
+    state.settings.use_explicit_error_terms = True
+    state.rng().set_base_seed(42)
+    state.rng().add_channel("person_id", data2)
+    state.rng().begin_step("test_step_mnl")
 
-    chunk_sizer = chunk.ChunkSizer(eet_state, "", "", num_choosers)
+    chunk_sizer = chunk.ChunkSizer(state, "", "", num_choosers)
 
+    # run eval_mnl with EET enabled
     choices_eet = simulate.eval_mnl(
-        state=eet_state,
+        state=state,
         choosers=data2,
         spec=spec2,
         locals_d=None,
@@ -128,17 +132,14 @@ def test_eval_mnl_eet(data_dir):
         chunk_sizer=chunk_sizer,
     )
 
-    # calculating probabilties from utility
-    prob_state = workflow.State()
-    prob_state.initialize_filesystem(working_dir=Path(os.path.dirname(__file__)), data_dir=(data_dir,)).default_settings()
-    prob_state.settings.use_explicit_error_terms = False
+    # Reset the state, without EET enabled
+    state.settings.use_explicit_error_terms = False
 
-    prob_state.rng().set_base_seed(42)
-    prob_state.rng().add_channel("person_id", data2)
-    prob_state.rng().begin_step("test_step_mnl")
+    state.rng().end_step("test_step_mnl")
+    state.rng().begin_step("test_step_mnl")
 
     choices_mnl = simulate.eval_mnl(
-        state=prob_state,
+        state=state,
         choosers=data2,
         spec=spec2,
         locals_d=None,
@@ -147,25 +148,14 @@ def test_eval_mnl_eet(data_dir):
         chunk_sizer=chunk_sizer,
     )
 
-    mnl_counts = choices_mnl.value_counts(normalize=True).sort_index()
-    explicit_counts = choices_eet.value_counts(normalize=True).sort_index()
-
-    # Check that they are similar
-    for i, alt in enumerate(["alt0", "alt2"]):
-        share_mnl = mnl_counts.get(i, 0)
-        share_explicit = explicit_counts.get(i, 0)
-        assert abs(share_mnl - share_explicit) < 0.01, f"Large discrepancy at alt {alt}: {share_mnl} vs {share_explicit}"
+    # Compare counts
+    mnl_counts = choices_mnl.value_counts(normalize=True)
+    explicit_counts = choices_eet.value_counts(normalize=True)
+    assert np.allclose(mnl_counts, explicit_counts, atol=0.01)
 
 
-def test_eval_nl_eet(data_dir):
-    """
-    Check that the same probabilities are gotten when using EET and calculating
-    probabilities directly for eval_nl
-    """
-    # using eet state
-    eet_state = workflow.State()
-    eet_state.initialize_filesystem(working_dir=Path(os.path.dirname(__file__)), data_dir=(data_dir,)).default_settings()
-    eet_state.settings.use_explicit_error_terms = True
+def test_eval_nl_eet(state):
+    # Check that the same counts are returned by eval_nl when using EET and when not.
 
     num_choosers = 100_000
 
@@ -191,14 +181,17 @@ def test_eval_nl_eet(data_dir):
         ],
     }
 
-    eet_state.rng().set_base_seed(42)  # Set seed BEFORE adding channels or steps
-    eet_state.rng().add_channel("person_id", data2)
-    eet_state.rng().begin_step("test_step_mnl")
+    # Set up a state with EET enabled
+    state.settings.use_explicit_error_terms = True
+    state.rng().set_base_seed(42)
+    state.rng().add_channel("person_id", data2)
+    state.rng().begin_step("test_step_mnl")
 
-    chunk_sizer = chunk.ChunkSizer(eet_state, "", "", num_choosers)
+    chunk_sizer = chunk.ChunkSizer(state, "", "", num_choosers)
 
+    # run eval_nl with EET enabled
     choices_eet = simulate.eval_nl(
-        state=eet_state,
+        state=state,
         choosers=data2,
         spec=spec2,
         nest_spec=nest_spec,
@@ -209,17 +202,14 @@ def test_eval_nl_eet(data_dir):
         chunk_sizer=chunk_sizer,
     )
 
-    # calculating probabilties from utility
-    prob_state = workflow.State()
-    prob_state.initialize_filesystem(working_dir=Path(os.path.dirname(__file__)), data_dir=(data_dir,)).default_settings()
-    prob_state.settings.use_explicit_error_terms = False
+    # Reset the state, without EET enabled
+    state.settings.use_explicit_error_terms = False
 
-    prob_state.rng().set_base_seed(42)
-    prob_state.rng().add_channel("person_id", data2)
-    prob_state.rng().begin_step("test_step_mnl")
+    state.rng().end_step("test_step_mnl")
+    state.rng().begin_step("test_step_mnl")
 
     choices_mnl = simulate.eval_nl(
-        state=prob_state,
+        state=state,
         choosers=data2,
         spec=spec2,
         nest_spec=nest_spec,
@@ -230,11 +220,7 @@ def test_eval_nl_eet(data_dir):
         chunk_sizer=chunk_sizer,
     )
 
-    mnl_counts = choices_mnl.value_counts(normalize=True).sort_index()
-    explicit_counts = choices_eet.value_counts(normalize=True).sort_index()
-
-    # Check that they are similar
-    for i, alt in enumerate(["alt0", "alt2"]):
-        share_mnl = mnl_counts.get(i, 0)
-        share_explicit = explicit_counts.get(i, 0)
-        assert abs(share_mnl - share_explicit) < 0.01, f"Large discrepancy at alt {alt}: {share_mnl} vs {share_explicit}"
+    # Compare counts
+    mnl_counts = choices_mnl.value_counts(normalize=True)
+    explicit_counts = choices_eet.value_counts(normalize=True)
+    assert np.allclose(mnl_counts, explicit_counts, atol=0.01)
