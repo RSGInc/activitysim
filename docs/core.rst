@@ -323,6 +323,16 @@ To specify and solve an NL model:
 * specify the nesting structure via the NESTS setting in the model configuration YAML file.  An example nested logit NESTS entry can be found in ``example/configs/tour_mode_choice.yaml``
 * call ``simulate.simple_simulate()``.  The ``simulate.interaction_simulate()`` functionality is not yet supported for NL.
 
+Explicit Error Terms
+^^^^^^^^^^^^^^^^^^^^
+
+By default, ActivitySim uses analytical probabilities to make choices. Alternatively, users can enable
+``use_explicit_error_terms: True`` in the model settings. In this mode, unobserved utility components
+are drawn directly from the Gumbel distribution (EV1) and added to the systematic utilities. The
+alternative with the highest total utility is then selected. This approach can be useful for
+reducing simulation noise and improving consistency, particularly when comparing scenarios where
+only a subset of alternatives has changed.
+
 API
 ^^^
 
