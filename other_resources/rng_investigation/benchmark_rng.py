@@ -435,8 +435,12 @@ def available_candidates() -> dict[str, RNGCandidate]:
         "RandomState": LegacyRandomStateCandidate(),
         "GeneratorPCG64": GeneratorBitGenCandidate(np.random.PCG64, "GeneratorPCG64"),
         "GeneratorSFC64": GeneratorBitGenCandidate(np.random.SFC64, "GeneratorSFC64"),
-        "GeneratorPhilox": GeneratorBitGenCandidate(np.random.Philox, "GeneratorPhilox"),
-        "GeneratorMT19937": GeneratorBitGenCandidate(np.random.MT19937, "GeneratorMT19937"),
+        "GeneratorPhilox": GeneratorBitGenCandidate(
+            np.random.Philox, "GeneratorPhilox"
+        ),
+        "GeneratorMT19937": GeneratorBitGenCandidate(
+            np.random.MT19937, "GeneratorMT19937"
+        ),
         "PhiloxAdvance": PhiloxAdvanceCandidate(),
         "VectorizedChooserHash": VectorizedChooserHashCandidate(),
     }
@@ -626,7 +630,9 @@ def benchmark_scenario_fast_forward(
     )
 
 
-def benchmark_memory_instances(candidate: RNGCandidate, count: int, repeat: int) -> BenchmarkResult:
+def benchmark_memory_instances(
+    candidate: RNGCandidate, count: int, repeat: int
+) -> BenchmarkResult:
     def workload():
         objs = [candidate.instance_factory(i + 1) for i in range(count)]
         return objs
@@ -718,7 +724,9 @@ def ks_one_sample_uniform(values: np.ndarray) -> tuple[float, float]:
     return d, p
 
 
-def reproducibility_check(candidate: RNGCandidate, rows: int = 256, n_draws: int = 8) -> tuple[bool, str]:
+def reproducibility_check(
+    candidate: RNGCandidate, rows: int = 256, n_draws: int = 8
+) -> tuple[bool, str]:
     seeds = activitysim_row_seeds(rows, 12345, "persons", "repro_test")
     a = candidate.draw_uniform(seeds, n=n_draws, offset=5)
     b = candidate.draw_uniform(seeds, n=n_draws, offset=5)
@@ -730,13 +738,13 @@ def reproducibility_check(candidate: RNGCandidate, rows: int = 256, n_draws: int
     different_seed_differs = not np.array_equal(a, c)
 
     ok = same_seed_ok and different_seed_differs
-    message = (
-        f"same_seed_equal={same_seed_ok}; different_seed_differs={different_seed_differs}"
-    )
+    message = f"same_seed_equal={same_seed_ok}; different_seed_differs={different_seed_differs}"
     return ok, message
 
 
-def quality_check_uniform(candidate: RNGCandidate, n: int = 10_000) -> tuple[float, float, float, float, float, float]:
+def quality_check_uniform(
+    candidate: RNGCandidate, n: int = 10_000
+) -> tuple[float, float, float, float, float, float]:
     seeds = activitysim_row_seeds(n, 7, "persons", "quality_test")
     values = candidate.draw_uniform(seeds, n=1).reshape(-1)
     mean = float(np.mean(values))
@@ -762,23 +770,33 @@ def seed_invariance_unit_test(
     target_seed = np.uint32(987654321)
 
     solo = np.asarray([target_seed], dtype=np.uint32)
-    batch_a = np.asarray([111111111, target_seed, 222222222, 333333333], dtype=np.uint32)
-    batch_b = np.asarray([333333333, 222222222, target_seed, 111111111], dtype=np.uint32)
+    batch_a = np.asarray(
+        [111111111, target_seed, 222222222, 333333333], dtype=np.uint32
+    )
+    batch_b = np.asarray(
+        [333333333, 222222222, target_seed, 111111111], dtype=np.uint32
+    )
 
     solo_draw = candidate.draw_uniform(solo, n=draws_per_seed, offset=offset)[0]
 
     idx_a = int(np.where(batch_a == target_seed)[0][0])
     idx_b = int(np.where(batch_b == target_seed)[0][0])
 
-    batch_a_draw = candidate.draw_uniform(batch_a, n=draws_per_seed, offset=offset)[idx_a]
-    batch_b_draw = candidate.draw_uniform(batch_b, n=draws_per_seed, offset=offset)[idx_b]
+    batch_a_draw = candidate.draw_uniform(batch_a, n=draws_per_seed, offset=offset)[
+        idx_a
+    ]
+    batch_b_draw = candidate.draw_uniform(batch_b, n=draws_per_seed, offset=offset)[
+        idx_b
+    ]
 
     same_a = np.array_equal(solo_draw, batch_a_draw)
     same_b = np.array_equal(solo_draw, batch_b_draw)
     passed = bool(same_a and same_b)
 
     if passed:
-        message = "PASS: target chooser draws are invariant to batch membership and order"
+        message = (
+            "PASS: target chooser draws are invariant to batch membership and order"
+        )
     else:
         message = (
             "FAIL: target chooser draws changed with batch membership/order "
@@ -788,15 +806,15 @@ def seed_invariance_unit_test(
     return SeedUnitTestResult(candidate=candidate.name, passed=passed, message=message)
 
 
-def run_seed_invariance_unit_tests(settings: dict, candidates: list[RNGCandidate]) -> bool:
+def run_seed_invariance_unit_tests(
+    settings: dict, candidates: list[RNGCandidate]
+) -> bool:
     draws_per_seed = int(settings.get("seed_unit_test_draws", 16))
     offset = int(settings.get("seed_unit_test_offset", 7))
 
     print("\nSeed invariance unit tests")
     print("-" * 80)
-    print(
-        f"Test config: draws_per_seed={draws_per_seed}, offset={offset}"
-    )
+    print(f"Test config: draws_per_seed={draws_per_seed}, offset={offset}")
 
     all_passed = True
     for candidate in candidates:
@@ -822,8 +840,12 @@ def print_results(results: list[BenchmarkResult]) -> None:
 
     for r in results:
         peak_mb = r.peak_memory_bytes / (1024 * 1024)
-        mean_str = f"{r.mean_seconds:10.6f}" if np.isfinite(r.mean_seconds) else f"{'nan':>10}"
-        std_str = f"{r.std_seconds:10.6f}" if np.isfinite(r.std_seconds) else f"{'nan':>10}"
+        mean_str = (
+            f"{r.mean_seconds:10.6f}" if np.isfinite(r.mean_seconds) else f"{'nan':>10}"
+        )
+        std_str = (
+            f"{r.std_seconds:10.6f}" if np.isfinite(r.std_seconds) else f"{'nan':>10}"
+        )
         tput_str = (
             f"{r.throughput_draws_per_sec:14.1f}"
             if np.isfinite(r.throughput_draws_per_sec)
@@ -948,7 +970,9 @@ def plot_location_choice_sweeps(
         sorted({int(r.draws_per_reseed) for r in reseed_rows}) if reseed_rows else []
     )
     fixed_draws_text = (
-        str(fixed_draws[0]) if len(fixed_draws) == 1 else ",".join(map(str, fixed_draws))
+        str(fixed_draws[0])
+        if len(fixed_draws) == 1
+        else ",".join(map(str, fixed_draws))
     )
 
     reseed_plot = _plot_single_sweep(
@@ -998,7 +1022,9 @@ def select_candidates(settings: dict) -> list[RNGCandidate]:
 
     missing = [name for name in requested if name not in candidate_map]
     if missing:
-        raise ValueError(f"Unknown candidate names in RUN_SETTINGS['candidates']: {missing}")
+        raise ValueError(
+            f"Unknown candidate names in RUN_SETTINGS['candidates']: {missing}"
+        )
 
     return [candidate_map[name] for name in requested]
 
@@ -1069,7 +1095,9 @@ def main() -> None:
     if draw_sweep.get("enabled", True):
         reseeds_fixed = int(draw_sweep.get("reseeds", 100))
         offset = int(draw_sweep.get("offset", 0))
-        for draws_per_reseed in [int(v) for v in draw_sweep.get("draws_per_reseed", [])]:
+        for draws_per_reseed in [
+            int(v) for v in draw_sweep.get("draws_per_reseed", [])
+        ]:
             for candidate in candidates:
                 print(
                     f"Testing candidate: {candidate.name} [draw_sweep reseeds={reseeds_fixed}, draws_per_reseed={draws_per_reseed}]",
@@ -1100,9 +1128,13 @@ def main() -> None:
             metric=str(plot_settings.get("metric", "mean_seconds")),
         )
         if plot_files:
-            print(f"\nWrote {len(plot_files)} plot files to: {plot_settings.get('output_dir', 'benchmark_rng_plots')}")
+            print(
+                f"\nWrote {len(plot_files)} plot files to: {plot_settings.get('output_dir', 'benchmark_rng_plots')}"
+            )
         else:
-            print("\nNo plots were created (insufficient x-axis variation or plotting unavailable).")
+            print(
+                "\nNo plots were created (insufficient x-axis variation or plotting unavailable)."
+            )
 
     if bool(settings.get("run_repro_check", True)):
         print("\nReproducibility checks")
