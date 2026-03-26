@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os.path
-from pathlib import Path
 
 import numpy as np
 import numpy.testing as npt
@@ -16,7 +15,7 @@ from activitysim.core import chunk, simulate, workflow
 
 @pytest.fixture
 def data_dir():
-    return Path(__file__).parent / "data"
+    return os.path.join(os.path.dirname(__file__), "data")
 
 
 @pytest.fixture
@@ -26,8 +25,10 @@ def spec_name(data_dir):
 
 @pytest.fixture
 def state(data_dir) -> workflow.State:
-    state = workflow.State().default_settings()
-    state.initialize_filesystem(working_dir=Path(__file__).parent, data_dir=(data_dir,))
+    state = workflow.State()
+    state.initialize_filesystem(
+        working_dir=os.path.dirname(__file__), data_dir=(data_dir,)
+    ).default_settings()
     return state
 
 
@@ -41,9 +42,7 @@ def data(data_dir):
     return pd.read_csv(os.path.join(data_dir, "data.csv"))
 
 
-def test_read_model_spec(
-    state, spec_name
-):  # NOTE: this tests code not directly related to simulate
+def test_read_model_spec(state, spec_name):
     spec = state.filesystem.read_model_spec(file_name=spec_name)
 
     assert len(spec) == 4
@@ -55,14 +54,10 @@ def test_read_model_spec(
 def test_eval_variables(state, spec, data):
     result = simulate.eval_variables(state, spec.index, data)
 
-    expected_result = [
-        [1, 0, 4, 1],
-        [0, 1, 4, 1],
-        [0, 1, 5, 1],
-    ]
-    expected = pd.DataFrame(expected_result, index=data.index, columns=spec.index)
+    expected = pd.DataFrame(
+        [[1, 0, 4, 1], [0, 1, 4, 1], [0, 1, 5, 1]], index=data.index, columns=spec.index
+    )
 
-    # type-cast to match the expected result dtypes
     expected[expected.columns[0]] = expected[expected.columns[0]].astype(np.int8)
     expected[expected.columns[1]] = expected[expected.columns[1]].astype(np.int8)
     expected[expected.columns[2]] = expected[expected.columns[2]].astype(np.int64)
