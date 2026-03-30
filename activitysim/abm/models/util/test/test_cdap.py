@@ -186,12 +186,13 @@ def test_cdap_explicit_error_terms_parity(people, model_settings):
     # We'll just duplicate the existing people a few times
     large_people = pd.concat([people] * 500).reset_index(drop=True)
     large_people.index.name = "person_id"
-    # Need to ensure household IDs are updated so they are distinct
-    large_people["household_id"] = (
-        large_people.groupby("household_id").cumcount() * 1000
-        + large_people["household_id"]
-    )
-    large_people = large_people.sort_values("household_id")
+
+    assert people.household_id.is_monotonic_increasing
+    large_people["hhid_diff"] = large_people.household_id.diff().fillna(0).astype(int)
+    large_people.loc[large_people["hhid_diff"] < 0, "hhid_diff"] = 1
+    large_people["household_id"] = large_people.hhid_diff.cumsum()
+
+    assert large_people["household_id"].is_monotonic_increasing
 
     # Run without explicit error terms
     state_no_eet = workflow.State.make_default(__file__)
