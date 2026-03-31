@@ -124,3 +124,7 @@ utility that can be used in practice. ActivitySim historically uses a utility of
 alternatives practically unavailable. To keep consistent with this behaviour, EET also treats
 alternatives with utilities smaller or equal to -999 as unavailable, see
 `activitysim.core.logit.validate_utils`.
+
+### Scale of the distribution
+Error terms are drawn from standard Gumbel distributions, i.e., the scale of the error term is
+fixed to one.
