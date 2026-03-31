@@ -219,3 +219,43 @@ def test_eval_nl_eet(state):
     mnl_counts = choices_mnl.value_counts(normalize=True)
     explicit_counts = choices_eet.value_counts(normalize=True)
     assert np.allclose(mnl_counts, explicit_counts, atol=0.01)
+
+def test_compute_nested_utilities():
+    # computes nested utilities manually and using the function and checks that
+    # the utilities are the same
+
+    nest_spec = {
+        "name": "root",
+        "coefficient": 1.0,
+        "alternatives": [
+            {"name": "alt0", "coefficient": 0.5, "alternatives": ["alt0.0", "alt0.1"]},
+            "alt1",
+        ],
+    }
+
+    num_choosers = 2
+    raw_utilities = pd.DataFrame(
+        {"alt1": [1,10], "alt0.0": [2,3], "alt0.1": [4,5]},
+        index=pd.Index(range(num_choosers))
+    )
+
+    nested_utilities = simulate.compute_nested_utilities(raw_utilities, nest_spec)
+
+    # these are from the definition of nest_spec
+    nest_coefficients = pd.DataFrame(
+        {"alt1": [1.0], "alt0.0": [0.5], "alt0.1": [0.5]}, index=[0]
+    )
+    leaf_utilities = raw_utilities / nest_coefficients.iloc[0]
+
+    constructed_nested_utilities = pd.DataFrame(index=raw_utilities.index)
+
+    constructed_nested_utilities[leaf_utilities.columns] = leaf_utilities
+    constructed_nested_utilities["alt0"] = 0.5 * np.log(
+                    np.exp(leaf_utilities[["alt0.0", "alt0.1"]]).sum(axis=1)
+    )
+    constructed_nested_utilities["root"] = 1 * np.log(
+                    np.exp(constructed_nested_utilities[["alt1", "alt0"]]).sum(axis=1)
+    )
+    print(constructed_nested_utilities)
+
+    assert np.allclose(nested_utilities, constructed_nested_utilities)
