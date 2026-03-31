@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 EXP_UTIL_MIN = 1e-300
 EXP_UTIL_MAX = np.inf
 
-# TODO-EET: Figure out what type we want UTIL_MIN to be, currently np.float64
 UTIL_MIN = np.log(EXP_UTIL_MIN, dtype=np.float64)
 UTIL_UNAVAILABLE = 1000.0 * (UTIL_MIN - 1.0)
 
