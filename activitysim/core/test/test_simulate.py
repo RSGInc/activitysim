@@ -265,3 +265,70 @@ def test_compute_nested_utilities(nest_spec):
     assert np.allclose(
         nested_utilities, constructed_nested_utilities[nested_utilities.columns]
     ), "Mismatch in nested utilities"
+
+
+def test_eval_nl_logsums_eet_vs_non_eet(state, nest_spec):
+    """eval_nl with want_logsums=True must produce identical logsums under
+    EET and non-EET modes"""
+
+    num_choosers = 100
+
+    np.random.seed(42)
+    data2 = pd.DataFrame(
+        {"chooser_attr": np.random.rand(num_choosers)},
+        index=pd.Index(range(num_choosers), name="person_id"),
+    )
+
+    spec2 = pd.DataFrame(
+        {"alt1": [2.0], "alt0.0": [0.5], "alt0.1": [0.2]},
+        index=pd.Index(["chooser_attr"], name="Expression"),
+    )
+
+    chunk_sizer = chunk.ChunkSizer(state, "", "", num_choosers)
+
+    state.settings.use_explicit_error_terms = True
+    state.rng().set_base_seed(42)
+    state.rng().add_channel("person_id", data2)
+    state.rng().begin_step("test_step_logsums")
+
+    result_eet = simulate.eval_nl(
+        state=state,
+        choosers=data2,
+        spec=spec2,
+        nest_spec=nest_spec,
+        locals_d={},
+        custom_chooser=None,
+        estimator=None,
+        want_logsums=True,
+        trace_label="test",
+        chunk_sizer=chunk_sizer,
+    )
+
+    state.rng().end_step("test_step_logsums")
+
+    state.settings.use_explicit_error_terms = False
+    state.rng().begin_step("test_step_logsums")
+
+    result_non_eet = simulate.eval_nl(
+        state=state,
+        choosers=data2,
+        spec=spec2,
+        nest_spec=nest_spec,
+        locals_d={},
+        custom_chooser=None,
+        estimator=None,
+        want_logsums=True,
+        trace_label="test",
+        chunk_sizer=chunk_sizer,
+    )
+
+    state.rng().end_step("test_step_logsums")
+
+    # Both paths should return a DataFrame with 'choice' and 'logsum' columns
+    assert "logsum" in result_eet.columns, "EET result missing logsum column"
+    assert "logsum" in result_non_eet.columns, "non-EET result missing logsum column"
+
+    # Logsums are deterministic — they must be identical across paths
+    assert np.allclose(
+        result_eet["logsum"].values, result_non_eet["logsum"].values, rtol=1e-10
+    )

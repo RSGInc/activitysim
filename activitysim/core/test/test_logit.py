@@ -108,11 +108,12 @@ def test_validate_utils_raises_when_all_unavailable():
 
 def test_validate_utils_allows_zero_probs():
     state = workflow.State().default_settings()
-    utils = pd.DataFrame([[logit.UTIL_MIN - 1.0, logit.UTIL_MIN - 2.0]])
+    utils = pd.DataFrame([[0.5, logit.UTIL_MIN - 1.0]])
 
     validated = logit.validate_utils(state, utils, allow_zero_probs=True)
 
-    assert (validated.iloc[0] == logit.UTIL_UNAVAILABLE).all()
+    assert validated.iloc[0, 0] == 0.5
+    assert validated.iloc[0, 1] == logit.UTIL_UNAVAILABLE
 
 
 def test_validate_utils_does_not_mutate_input():

@@ -636,11 +636,11 @@ def interaction_dataset(
     """
     if not choosers.index.is_unique:
         raise TableIndexError(
-            "ERROR: choosers index is not unique, " "sample will not work correctly"
+            "ERROR: choosers index is not unique, sample will not work correctly"
         )
     if not alternatives.index.is_unique:
         raise TableIndexError(
-            "ERROR: alternatives index is not unique, " "sample will not work correctly"
+            "ERROR: alternatives index is not unique, sample will not work correctly"
         )
 
     numchoosers = len(choosers)

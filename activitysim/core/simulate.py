@@ -84,14 +84,12 @@ def read_model_alts(state: workflow.State, file_name, set_index=None):
         if "Alt" in df.columns:
             # Handle deprecated ALTS index
             warnings.warn(
-                "Support for 'Alt' column name in alternatives files will be removed."
-                " Use 'alt' (lowercase) instead.",
+                "Support for 'Alt' column name in alternatives files will be removed. Use 'alt' (lowercase) instead.",
                 DeprecationWarning,
             )
             # warning above does not actually output to logger, so also log it
             logger.warning(
-                "Support for 'Alt' column name in alternatives files will be removed."
-                " Use 'alt' (lowercase) instead."
+                "Support for 'Alt' column name in alternatives files will be removed. Use 'alt' (lowercase) instead."
             )
             df.rename(columns={"Alt": "alt"}, inplace=True)
 
@@ -202,8 +200,7 @@ def read_model_coefficients(
 
     if coefficients.index.duplicated().any():
         logger.warning(
-            f"duplicate coefficients in {file_path}\n"
-            f"{coefficients[coefficients.index.duplicated(keep=False)]}"
+            f"duplicate coefficients in {file_path}\n{coefficients[coefficients.index.duplicated(keep=False)]}"
         )
         raise ModelConfigurationError(f"duplicate coefficients in {file_path}")
 
@@ -269,8 +266,7 @@ def spec_for_segment(
             assert (spec.astype(float) == spec).all(axis=None)
         except (ValueError, AssertionError):
             raise ModelConfigurationError(
-                f"No coefficient file specified for {spec_file_name} "
-                f"but not all spec column values are numeric"
+                f"No coefficient file specified for {spec_file_name} but not all spec column values are numeric"
             ) from None
 
         return spec
@@ -444,8 +440,7 @@ def get_segment_coefficients(
         if coefficients_col.isnull().any():
             # show them the offending lines from interaction_coefficients_file
             logger.warning(
-                f"bad coefficients in COEFFICIENTS {model_settings['COEFFICIENTS']}\n"
-                f"{coefficients_col[coefficients_col.isnull()]}"
+                f"bad coefficients in COEFFICIENTS {model_settings['COEFFICIENTS']}\n{coefficients_col[coefficients_col.isnull()]}"
             )
             assert not coefficients_col.isnull().any()
 
@@ -844,8 +839,7 @@ def eval_utilities(
             _sh_util_miss1 - _u_miss1
             if len(misses[0]) > sh_util.size * 0.01:
                 print(
-                    f"big problem: {len(misses[0])} missed close values "
-                    f"out of {sh_util.size} ({100*len(misses[0]) / sh_util.size:.2f}%)"
+                    f"big problem: {len(misses[0])} missed close values out of {sh_util.size} ({100 * len(misses[0]) / sh_util.size:.2f}%)"
                 )
                 print(f"{sh_util.shape=}")
                 print(misses)
@@ -1505,7 +1499,6 @@ def eval_nl(
         )
 
     if state.settings.use_explicit_error_terms:
-        # TODO-EET: Nested utility zero choice probability
         raw_utilities = logit.validate_utils(
             state, raw_utilities, allow_zero_probs=True, trace_label=trace_label
         )
@@ -1514,17 +1507,8 @@ def eval_nl(
         nested_utilities = compute_nested_utilities(raw_utilities, nest_spec)
         chunk_sizer.log_df(trace_label, "nested_utilities", nested_utilities)
 
-        # TODO-EET: use nested_utiltites directly to compute logsums?
         if want_logsums:
-            # logsum of nest root
-            # exponentiated utilities of leaves and nests
-            nested_exp_utilities = compute_nested_exp_utilities(
-                raw_utilities, nest_spec
-            )
-            chunk_sizer.log_df(
-                trace_label, "nested_exp_utilities", nested_exp_utilities
-            )
-            logsums = pd.Series(np.log(nested_exp_utilities.root), index=choosers.index)
+            logsums = pd.Series(nested_utilities.root, index=choosers.index)
             chunk_sizer.log_df(trace_label, "logsums", logsums)
 
         # Index of choices for nested utilities is different than unnested - this needs to be consistent for
