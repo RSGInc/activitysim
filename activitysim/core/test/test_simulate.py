@@ -42,6 +42,19 @@ def data(data_dir):
     return pd.read_csv(os.path.join(data_dir, "data.csv"))
 
 
+@pytest.fixture
+def nest_spec():
+    nest_spec = {
+        "name": "root",
+        "coefficient": 1.0,
+        "alternatives": [
+            {"name": "alt0", "coefficient": 0.5, "alternatives": ["alt0.0", "alt0.1"]},
+            "alt1",
+        ],
+    }
+    return nest_spec
+
+
 def test_read_model_spec(state, spec_name):
     spec = state.filesystem.read_model_spec(file_name=spec_name)
 
@@ -149,7 +162,7 @@ def test_eval_mnl_eet(state):
     assert np.allclose(mnl_counts, explicit_counts, atol=0.01)
 
 
-def test_eval_nl_eet(state):
+def test_eval_nl_eet(state, nest_spec):
     # Check that the same counts are returned by eval_nl when using EET and when not.
 
     num_choosers = 100_000
@@ -166,15 +179,6 @@ def test_eval_nl_eet(state):
         {"alt1": [2.0], "alt0.0": [0.5], "alt0.1": [0.2]},
         index=pd.Index(["chooser_attr"], name="Expression"),
     )
-
-    nest_spec = {
-        "name": "root",
-        "coefficient": 1.0,
-        "alternatives": [
-            {"name": "alt0", "coefficient": 0.5, "alternatives": ["alt0.0", "alt0.1"]},
-            "alt1",
-        ],
-    }
 
     # Set up a state with EET enabled
     state.settings.use_explicit_error_terms = True
@@ -220,7 +224,8 @@ def test_eval_nl_eet(state):
     explicit_counts = choices_eet.value_counts(normalize=True)
     assert np.allclose(mnl_counts, explicit_counts, atol=0.01)
 
-def test_compute_nested_utilities():
+
+def test_compute_nested_utilities(nest_spec):
     # computes nested utilities manually and using the function and checks that
     # the utilities are the same
 
@@ -242,20 +247,23 @@ def test_compute_nested_utilities():
     nested_utilities = simulate.compute_nested_utilities(raw_utilities, nest_spec)
 
     # these are from the definition of nest_spec
-    nest_coefficients = pd.DataFrame(
-        {"alt1": [1.0], "alt0.0": [0.5], "alt0.1": [0.5]}, index=[0]
+    alt0_nest_coefficient = nest_spec["alternatives"][0]["coefficient"]
+    alt0_leaf_product_of_coefficients = nest_spec["coefficient"] * alt0_nest_coefficient
+    assert alt0_leaf_product_of_coefficients == 0.5 # 1 * 0.5
+    
+    product_of_coefficientss = pd.DataFrame(
+        {"alt1": [nest_spec["coefficient"]], "alt0.0": [alt0_leaf_product_of_coefficients], "alt0.1": [alt0_leaf_product_of_coefficients]}, index=[0]
     )
-    leaf_utilities = raw_utilities / nest_coefficients.iloc[0]
+    leaf_utilities = raw_utilities / product_of_coefficientss.iloc[0]
 
     constructed_nested_utilities = pd.DataFrame(index=raw_utilities.index)
 
     constructed_nested_utilities[leaf_utilities.columns] = leaf_utilities
-    constructed_nested_utilities["alt0"] = 0.5 * np.log(
+    constructed_nested_utilities["alt0"] = alt0_nest_coefficient * np.log(
                     np.exp(leaf_utilities[["alt0.0", "alt0.1"]]).sum(axis=1)
     )
-    constructed_nested_utilities["root"] = 1 * np.log(
+    constructed_nested_utilities["root"] = nest_spec["coefficient"] * np.log(
                     np.exp(constructed_nested_utilities[["alt1", "alt0"]]).sum(axis=1)
     )
-    print(constructed_nested_utilities)
 
-    assert np.allclose(nested_utilities, constructed_nested_utilities)
+    assert np.allclose(nested_utilities, constructed_nested_utilities[nested_utilities.columns])
