@@ -225,15 +225,6 @@ def test_compute_nested_utilities(nest_spec):
     # computes nested utilities manually and using the function and checks that
     # the utilities are the same
 
-    nest_spec = {
-        "name": "root",
-        "coefficient": 1.0,
-        "alternatives": [
-            {"name": "alt0", "coefficient": 0.5, "alternatives": ["alt0.0", "alt0.1"]},
-            "alt1",
-        ],
-    }
-
     num_choosers = 2
     raw_utilities = pd.DataFrame({"alt1": [1, 10], "alt0.0": [2, 3], "alt0.1": [4, 5]}, index=pd.Index(range(num_choosers)))
 
