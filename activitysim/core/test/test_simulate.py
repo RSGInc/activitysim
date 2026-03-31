@@ -26,9 +26,7 @@ def spec_name(data_dir):
 @pytest.fixture
 def state(data_dir) -> workflow.State:
     state = workflow.State()
-    state.initialize_filesystem(
-        working_dir=os.path.dirname(__file__), data_dir=(data_dir,)
-    ).default_settings()
+    state.initialize_filesystem(working_dir=os.path.dirname(__file__), data_dir=(data_dir,)).default_settings()
     return state
 
 
@@ -67,9 +65,7 @@ def test_read_model_spec(state, spec_name):
 def test_eval_variables(state, spec, data):
     result = simulate.eval_variables(state, spec.index, data)
 
-    expected = pd.DataFrame(
-        [[1, 0, 4, 1], [0, 1, 4, 1], [0, 1, 5, 1]], index=data.index, columns=spec.index
-    )
+    expected = pd.DataFrame([[1, 0, 4, 1], [0, 1, 4, 1], [0, 1, 5, 1]], index=data.index, columns=spec.index)
 
     expected[expected.columns[0]] = expected[expected.columns[0]].astype(np.int8)
     expected[expected.columns[1]] = expected[expected.columns[1]].astype(np.int8)
@@ -239,10 +235,7 @@ def test_compute_nested_utilities(nest_spec):
     }
 
     num_choosers = 2
-    raw_utilities = pd.DataFrame(
-        {"alt1": [1,10], "alt0.0": [2,3], "alt0.1": [4,5]},
-        index=pd.Index(range(num_choosers))
-    )
+    raw_utilities = pd.DataFrame({"alt1": [1, 10], "alt0.0": [2, 3], "alt0.1": [4, 5]}, index=pd.Index(range(num_choosers)))
 
     nested_utilities = simulate.compute_nested_utilities(raw_utilities, nest_spec)
 
@@ -266,4 +259,4 @@ def test_compute_nested_utilities(nest_spec):
                     np.exp(constructed_nested_utilities[["alt1", "alt0"]]).sum(axis=1)
     )
 
-    assert np.allclose(nested_utilities, constructed_nested_utilities[nested_utilities.columns])
+    assert np.allclose(nested_utilities, constructed_nested_utilities[nested_utilities.columns]), "Mismatch in nested utilities"
