@@ -326,12 +326,16 @@ To specify and solve an NL model:
 Explicit Error Terms
 ^^^^^^^^^^^^^^^^^^^^
 
-By default, ActivitySim uses analytical probabilities to make choices. Alternatively, users can enable
-``use_explicit_error_terms: True`` in the model settings. In this mode, unobserved utility components
-are drawn directly from the Gumbel distribution (EV1) and added to the systematic utilities. The
-alternative with the highest total utility is then selected. This approach can be useful for
-reducing simulation noise and improving consistency, particularly when comparing scenarios where
-only a subset of alternatives has changed.
+By default, ActivitySim makes choices by calculating analytical probabilities and then drawing once from
+the cumulative distribution. With Explicit Error Terms (EET), enabled by setting
+``use_explicit_error_terms: True`` in ``settings.yaml``, ActivitySim instead draws an EV1 (Gumbel) error
+term for each available alternative, adds this to the observed utility, and chooses the maximum total utility.
+
+EET changes the final simulation step, not the utility expressions, availability logic, or nesting
+structure. In practice, it can reduce Monte Carlo noise in scenario comparisons.
+
+For configuration guidance see :ref:`explicit_error_terms_ways_to_run`. For detailed implementation notes
+see :doc:`/dev-guide/explicit-error-terms`.
 
 API
 ^^^

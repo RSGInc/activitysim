@@ -33,6 +33,7 @@ Contents
    component-configs
    components/index
    ../core
+   explicit-error-terms
    ../benchmarking
    build-docs
    changes
