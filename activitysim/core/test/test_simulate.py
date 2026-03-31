@@ -26,9 +26,7 @@ def spec_name(data_dir):
 @pytest.fixture
 def state(data_dir) -> workflow.State:
     state = workflow.State()
-    state.initialize_filesystem(
-        working_dir=os.path.dirname(__file__), data_dir=(data_dir,)
-    ).default_settings()
+    state.initialize_filesystem(working_dir=os.path.dirname(__file__), data_dir=(data_dir,)).default_settings()
     return state
 
 
@@ -54,9 +52,7 @@ def test_read_model_spec(state, spec_name):
 def test_eval_variables(state, spec, data):
     result = simulate.eval_variables(state, spec.index, data)
 
-    expected = pd.DataFrame(
-        [[1, 0, 4, 1], [0, 1, 4, 1], [0, 1, 5, 1]], index=data.index, columns=spec.index
-    )
+    expected = pd.DataFrame([[1, 0, 4, 1], [0, 1, 4, 1], [0, 1, 5, 1]], index=data.index, columns=spec.index)
 
     expected[expected.columns[0]] = expected[expected.columns[0]].astype(np.int8)
     expected[expected.columns[1]] = expected[expected.columns[1]].astype(np.int8)
@@ -220,6 +216,7 @@ def test_eval_nl_eet(state):
     explicit_counts = choices_eet.value_counts(normalize=True)
     assert np.allclose(mnl_counts, explicit_counts, atol=0.01)
 
+
 def test_compute_nested_utilities():
     # computes nested utilities manually and using the function and checks that
     # the utilities are the same
@@ -234,28 +231,18 @@ def test_compute_nested_utilities():
     }
 
     num_choosers = 2
-    raw_utilities = pd.DataFrame(
-        {"alt1": [1,10], "alt0.0": [2,3], "alt0.1": [4,5]},
-        index=pd.Index(range(num_choosers))
-    )
+    raw_utilities = pd.DataFrame({"alt1": [1, 10], "alt0.0": [2, 3], "alt0.1": [4, 5]}, index=pd.Index(range(num_choosers)))
 
     nested_utilities = simulate.compute_nested_utilities(raw_utilities, nest_spec)
 
     # these are from the definition of nest_spec
-    nest_coefficients = pd.DataFrame(
-        {"alt1": [1.0], "alt0.0": [0.5], "alt0.1": [0.5]}, index=[0]
-    )
+    nest_coefficients = pd.DataFrame({"alt1": [1.0], "alt0.0": [0.5], "alt0.1": [0.5]}, index=[0])
     leaf_utilities = raw_utilities / nest_coefficients.iloc[0]
 
     constructed_nested_utilities = pd.DataFrame(index=raw_utilities.index)
 
     constructed_nested_utilities[leaf_utilities.columns] = leaf_utilities
-    constructed_nested_utilities["alt0"] = 0.5 * np.log(
-                    np.exp(leaf_utilities[["alt0.0", "alt0.1"]]).sum(axis=1)
-    )
-    constructed_nested_utilities["root"] = 1 * np.log(
-                    np.exp(constructed_nested_utilities[["alt1", "alt0"]]).sum(axis=1)
-    )
-    print(constructed_nested_utilities)
+    constructed_nested_utilities["alt0"] = 0.5 * np.log(np.exp(leaf_utilities[["alt0.0", "alt0.1"]]).sum(axis=1))
+    constructed_nested_utilities["root"] = 1 * np.log(np.exp(constructed_nested_utilities[["alt1", "alt0"]]).sum(axis=1))
 
-    assert np.allclose(nested_utilities, constructed_nested_utilities)
+    assert np.allclose(nested_utilities, constructed_nested_utilities), "Mismatch in nested utilities"
