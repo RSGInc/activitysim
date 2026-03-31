@@ -26,9 +26,7 @@ def data_dir():
         (
             "fish.csv",
             "fish_choosers.csv",
-            pd.DataFrame(
-                [[-0.02047652], [0.95309824]], index=["price", "catch"], columns=["Alt"]
-            ),
+            pd.DataFrame([[-0.02047652], [0.95309824]], index=["price", "catch"], columns=["Alt"]),
             pd.DataFrame(
                 [
                     [0.2849598, 0.2742482, 0.1605457, 0.2802463],
@@ -259,14 +257,10 @@ def test_utils_to_probs_raises():
 #
 def test_make_choices_only_one():
     state = workflow.State().default_settings()
-    probs = pd.DataFrame(
-        [[1, 0, 0], [0, 1, 0]], columns=["a", "b", "c"], index=["x", "y"]
-    )
+    probs = pd.DataFrame([[1, 0, 0], [0, 1, 0]], columns=["a", "b", "c"], index=["x", "y"])
     choices, rands = logit.make_choices(state, probs)
 
-    pdt.assert_series_equal(
-        choices, pd.Series([0, 1], index=["x", "y"]), check_dtype=False
-    )
+    pdt.assert_series_equal(choices, pd.Series([0, 1], index=["x", "y"]), check_dtype=False)
 
 
 def test_make_choices_real_probs(utilities):
@@ -315,9 +309,7 @@ def test_different_order_make_choices():
     choices_shuffled, rands_shuffled = logit.make_choices(state, probs_shuffled)
 
     # sorting both to ensure comparison is on the same index order
-    pdt.assert_series_equal(
-        choices.sort_index(), choices_shuffled.sort_index(), check_dtype=False
-    )
+    pdt.assert_series_equal(choices.sort_index(), choices_shuffled.sort_index(), check_dtype=False)
 
 
 def test_make_choices_matches_random_draws():
@@ -435,9 +427,7 @@ def test_choose_from_tree_selects_leaf():
         "motorized": ["car", "bus"],
     }
 
-    choice = logit.choose_from_tree(
-        nest_utils, all_alternatives, logit_nest_groups, nest_alternatives_by_name
-    )
+    choice = logit.choose_from_tree(nest_utils, all_alternatives, logit_nest_groups, nest_alternatives_by_name)
 
     assert choice == "car"
 
@@ -452,9 +442,7 @@ def test_choose_from_tree_raises_on_missing_leaf():
     }
 
     with pytest.raises(ValueError, match="no alternative found"):
-        logit.choose_from_tree(
-            nest_utils, all_alternatives, logit_nest_groups, nest_alternatives_by_name
-        )
+        logit.choose_from_tree(nest_utils, all_alternatives, logit_nest_groups, nest_alternatives_by_name)
 
 
 #
@@ -566,9 +554,7 @@ def test_make_choices_vs_eet_same_distribution():
         def get_rn_generator():
             return MCDummyRNG()
 
-    probs = logit.utils_to_probs(
-        MCDummyState(), utils, trace_label=None, overflow_protection=True
-    )
+    probs = logit.utils_to_probs(MCDummyState(), utils, trace_label=None, overflow_protection=True)
     choices_mc, _ = logit.make_choices(MCDummyState(), probs, trace_label=None)
 
     # Explicit-error-term (EET) path — independent RNG
@@ -583,20 +569,14 @@ def test_make_choices_vs_eet_same_distribution():
         def get_rn_generator():
             return EETDummyRNG()
 
-    choices_eet = logit.make_choices_explicit_error_term_mnl(
-        EETDummyState(), utils, trace_label=None
-    )
+    choices_eet = logit.make_choices_explicit_error_term_mnl(EETDummyState(), utils, trace_label=None)
 
     mc_fracs = np.bincount(choices_mc.values.astype(int), minlength=n_alts) / n_draws
     eet_fracs = np.bincount(choices_eet.values.astype(int), minlength=n_alts) / n_draws
 
     np.testing.assert_allclose(mc_fracs, eet_fracs, atol=a_tol, rtol=r_tol)
-    np.testing.assert_allclose(
-        mc_fracs, probs.iloc[0].to_numpy(), atol=a_tol, rtol=r_tol
-    )
-    np.testing.assert_allclose(
-        eet_fracs, probs.iloc[0].to_numpy(), atol=a_tol, rtol=r_tol
-    )
+    np.testing.assert_allclose(mc_fracs, probs.iloc[0].to_numpy(), atol=a_tol, rtol=r_tol)
+    np.testing.assert_allclose(eet_fracs, probs.iloc[0].to_numpy(), atol=a_tol, rtol=r_tol)
 
 
 def test_make_choices_vs_eet_nl_same_distribution():
@@ -641,15 +621,9 @@ def test_make_choices_vs_eet_nl_same_distribution():
             return self
 
     # Compute probabilities for NL using simulation logic
-    nested_exp_utilities = simulate.compute_nested_exp_utilities(
-        utils_df[["car", "bus", "walk"]], nest_spec
-    )
-    nested_probabilities = simulate.compute_nested_probabilities(
-        MCDummyState(), nested_exp_utilities, nest_spec, trace_label=None
-    )
-    probs = simulate.compute_base_probabilities(
-        nested_probabilities, nest_spec, utils_df[["car", "bus", "walk"]]
-    )
+    nested_exp_utilities = simulate.compute_nested_exp_utilities(utils_df[["car", "bus", "walk"]], nest_spec)
+    nested_probabilities = simulate.compute_nested_probabilities(MCDummyState(), nested_exp_utilities, nest_spec, trace_label=None)
+    probs = simulate.compute_base_probabilities(nested_probabilities, nest_spec, utils_df[["car", "bus", "walk"]])
     choices_mc, _ = logit.make_choices(MCDummyState(), probs, trace_label=None)
 
     # 2. EET-based Nested Logit choices
@@ -676,9 +650,7 @@ def test_make_choices_vs_eet_nl_same_distribution():
     # For EET NL, we provide the utilities for all nodes.
     # compute_nested_utilities handles the division by nesting coefficients for leaves
     # and the logsum * coefficient for internal nodes.
-    nested_utilities = simulate.compute_nested_utilities(
-        utils_df[["car", "bus", "walk"]], nest_spec
-    )
+    nested_utilities = simulate.compute_nested_utilities(utils_df[["car", "bus", "walk"]], nest_spec)
 
     choices_eet = logit.make_choices_explicit_error_term_nl(
         EETDummyState(),
@@ -707,9 +679,7 @@ def test_interaction_dataset_no_sample(interaction_choosers, interaction_alts):
         index=[1, 2, 3, 4] * 4,
     )
 
-    interacted = logit.interaction_dataset(
-        workflow.State().default_settings(), interaction_choosers, interaction_alts
-    )
+    interacted = logit.interaction_dataset(workflow.State().default_settings(), interaction_choosers, interaction_alts)
 
     interacted, expected = interacted.align(expected, axis=1)
     pdt.assert_frame_equal(interacted, expected)

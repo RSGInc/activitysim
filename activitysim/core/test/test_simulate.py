@@ -26,9 +26,7 @@ def spec_name(data_dir):
 @pytest.fixture
 def state(data_dir) -> workflow.State:
     state = workflow.State()
-    state.initialize_filesystem(
-        working_dir=os.path.dirname(__file__), data_dir=(data_dir,)
-    ).default_settings()
+    state.initialize_filesystem(working_dir=os.path.dirname(__file__), data_dir=(data_dir,)).default_settings()
     return state
 
 
@@ -67,9 +65,7 @@ def test_read_model_spec(state, spec_name):
 def test_eval_variables(state, spec, data):
     result = simulate.eval_variables(state, spec.index, data)
 
-    expected = pd.DataFrame(
-        [[1, 0, 4, 1], [0, 1, 4, 1], [0, 1, 5, 1]], index=data.index, columns=spec.index
-    )
+    expected = pd.DataFrame([[1, 0, 4, 1], [0, 1, 4, 1], [0, 1, 5, 1]], index=data.index, columns=spec.index)
 
     expected[expected.columns[0]] = expected[expected.columns[0]].astype(np.int8)
     expected[expected.columns[1]] = expected[expected.columns[1]].astype(np.int8)
@@ -255,13 +251,74 @@ def test_compute_nested_utilities(nest_spec):
     constructed_nested_utilities = pd.DataFrame(index=raw_utilities.index)
 
     constructed_nested_utilities[leaf_utilities.columns] = leaf_utilities
-    constructed_nested_utilities["alt0"] = alt0_nest_coefficient * np.log(
-        np.exp(leaf_utilities[["alt0.0", "alt0.1"]]).sum(axis=1)
-    )
+    constructed_nested_utilities["alt0"] = alt0_nest_coefficient * np.log(np.exp(leaf_utilities[["alt0.0", "alt0.1"]]).sum(axis=1))
     constructed_nested_utilities["root"] = nest_spec["coefficient"] * np.log(
         np.exp(constructed_nested_utilities[["alt1", "alt0"]]).sum(axis=1)
     )
 
-    assert np.allclose(
-        nested_utilities, constructed_nested_utilities[nested_utilities.columns]
-    ), "Mismatch in nested utilities"
+    assert np.allclose(nested_utilities, constructed_nested_utilities[nested_utilities.columns]), "Mismatch in nested utilities"
+
+
+def test_eval_nl_logsums_eet_vs_non_eet(state, nest_spec):
+    """eval_nl with want_logsums=True must produce identical logsums under
+    EET and non-EET modes"""
+
+    num_choosers = 100
+
+    np.random.seed(42)
+    data2 = pd.DataFrame(
+        {"chooser_attr": np.random.rand(num_choosers)},
+        index=pd.Index(range(num_choosers), name="person_id"),
+    )
+
+    spec2 = pd.DataFrame(
+        {"alt1": [2.0], "alt0.0": [0.5], "alt0.1": [0.2]},
+        index=pd.Index(["chooser_attr"], name="Expression"),
+    )
+
+    chunk_sizer = chunk.ChunkSizer(state, "", "", num_choosers)
+
+    state.settings.use_explicit_error_terms = True
+    state.rng().set_base_seed(42)
+    state.rng().add_channel("person_id", data2)
+    state.rng().begin_step("test_step_logsums")
+
+    result_eet = simulate.eval_nl(
+        state=state,
+        choosers=data2,
+        spec=spec2,
+        nest_spec=nest_spec,
+        locals_d={},
+        custom_chooser=None,
+        estimator=None,
+        want_logsums=True,
+        trace_label="test",
+        chunk_sizer=chunk_sizer,
+    )
+
+    state.rng().end_step("test_step_logsums")
+
+    state.settings.use_explicit_error_terms = False
+    state.rng().begin_step("test_step_logsums")
+
+    result_non_eet = simulate.eval_nl(
+        state=state,
+        choosers=data2,
+        spec=spec2,
+        nest_spec=nest_spec,
+        locals_d={},
+        custom_chooser=None,
+        estimator=None,
+        want_logsums=True,
+        trace_label="test",
+        chunk_sizer=chunk_sizer,
+    )
+
+    state.rng().end_step("test_step_logsums")
+
+    # Both paths should return a DataFrame with 'choice' and 'logsum' columns
+    assert "logsum" in result_eet.columns, "EET result missing logsum column"
+    assert "logsum" in result_non_eet.columns, "non-EET result missing logsum column"
+
+    # Logsums are deterministic — they must be identical across paths
+    assert np.allclose(result_eet["logsum"].values, result_non_eet["logsum"].values, rtol=1e-10)
