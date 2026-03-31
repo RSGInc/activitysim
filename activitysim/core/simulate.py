@@ -1527,8 +1527,9 @@ def eval_nl(
             logsums = pd.Series(np.log(nested_exp_utilities.root), index=choosers.index)
             chunk_sizer.log_df(trace_label, "logsums", logsums)
 
-        # TODO-EET: index of choices for nested utilities is different than unnested - this needs to be consistent for
-        #  turning indexes into alternative names to keep code changes to minimum for now
+        # Index of choices for nested utilities is different than unnested - this needs to be consistent for
+        # turning indexes into alternative names to keep code changes to minimum for now. Might want to look
+        # into changing this in the future when revisiting nested logit EET code.
         name_mapping = raw_utilities.columns.values
 
         del raw_utilities
