@@ -289,12 +289,42 @@ Refer to :ref:`trace` for more details on configuring tracing and the various ou
 Explicit Error Terms
 ____________________
 
-By default, ActivitySim makes choices using analytical probabilities derived from systematic utilities.
-Alternatively, users can enable Explicit Error Terms (EET) by setting ``use_explicit_error_terms: True``
-in the global or model-specific settings.
+ActivitySim makes heavy use of micro-simulation. Most model components are discrete choice models with an inherent
+random component, and each for each choice situation a single outcome is generated.
+With the default Monte Carlo draw method, ActivitySim first calculates analytical probabilities from the
+systematic utilities of a multinomial or nested logit model and then makes one draw from the
+cumulative distribution for each chooser. Explicit Error Terms (EET) replaces that final draw with a direct
+random-utility simulation by drawing an independent EV1 (Gumbel) error term for each available
+chooser-alternative pair, adding it to the systematic utility, and selecting the alternative with the highest
+total utility. Both methods are valid ways to simulate from a discrete choice model, but EET is more
+consistent with the underlying random utility model and is less affected by Monte Carlo noise when comparing
+scenarios.
 
-In EET mode, unobserved utility components are drawn directly from the Gumbel distribution (EV1) and added
-to the systematic utilities. The alternative with the highest total utility is then selected. This approach
-is particularly useful for reducing simulation noise and improving consistency when comparing scenarios
-where only a subset of alternatives has changed, as it maintains the same unobserved error draws for
-alternatives that remain constant.
+To enable EET for a model run, set the global switch in ``settings.yaml``:
+
+.. code-block:: yaml
+
+  use_explicit_error_terms: True
+
+When comparing runs, enable or disable this setting consistently across the runs you want to compare.
+
+Using EET changes the simulation method, not the underlying utility expressions or availability rules.
+Aggregate behavior should remain comparable to the default method, but individual simulated choices will
+not usually match record-by-record. EET is also slower than the default probability-based draw because it
+requires additional random draws for each chooser and alternative and the core simulation algorithms have not
+yet been optimized for EET performance. Most of the slowdown is due to location choice models, where the number
+of alternatives is large and the current importance-sampling method requires many repeated choices for all
+alternatives. There are several ways to reduce the additional runtime, several of which are currently being
+investigated. It is also possible to turn off EET for the sampling part of location choice models by adding the
+following line to the location choice model settings:
+
+.. code-block:: yaml
+
+  compute_settings:
+    use_explicit_error_terms:
+      sample: false
+
+This applies to all models where location choice sampling is applied, e.g., school and workplace location choice and
+disaggregate accessibilities.
+
+For more details see :doc:`/dev-guide/explicit-error-terms`.
