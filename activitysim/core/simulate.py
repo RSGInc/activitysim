@@ -88,7 +88,9 @@ def read_model_alts(state: workflow.State, file_name, set_index=None):
                 DeprecationWarning,
             )
             # warning above does not actually output to logger, so also log it
-            logger.warning("Support for 'Alt' column name in alternatives files will be removed. Use 'alt' (lowercase) instead.")
+            logger.warning(
+                "Support for 'Alt' column name in alternatives files will be removed. Use 'alt' (lowercase) instead."
+            )
             df.rename(columns={"Alt": "alt"}, inplace=True)
 
         df.set_index(set_index, inplace=True)
@@ -176,11 +178,14 @@ def read_model_coefficients(
     else:
         assert file_name is None
         if isinstance(model_settings, BaseLogitComponentSettings) or (
-            isinstance(model_settings, PydanticBase) and hasattr(model_settings, "COEFFICIENTS")
+            isinstance(model_settings, PydanticBase)
+            and hasattr(model_settings, "COEFFICIENTS")
         ):
             file_name = model_settings.COEFFICIENTS
         else:
-            assert "COEFFICIENTS" in model_settings, "'COEFFICIENTS' tag not in model_settings in %s" % model_settings.get(
+            assert (
+                "COEFFICIENTS" in model_settings
+            ), "'COEFFICIENTS' tag not in model_settings in %s" % model_settings.get(
                 "source_file_paths"
             )
             file_name = model_settings["COEFFICIENTS"]
@@ -194,11 +199,15 @@ def read_model_coefficients(
         raise
 
     if coefficients.index.duplicated().any():
-        logger.warning(f"duplicate coefficients in {file_path}\n{coefficients[coefficients.index.duplicated(keep=False)]}")
+        logger.warning(
+            f"duplicate coefficients in {file_path}\n{coefficients[coefficients.index.duplicated(keep=False)]}"
+        )
         raise ModelConfigurationError(f"duplicate coefficients in {file_path}")
 
     if coefficients.value.isnull().any():
-        logger.warning(f"null coefficients in {file_path}\n{coefficients[coefficients.value.isnull()]}")
+        logger.warning(
+            f"null coefficients in {file_path}\n{coefficients[coefficients.value.isnull()]}"
+        )
         raise ModelConfigurationError(f"null coefficients in {file_path}")
 
     return coefficients
@@ -242,11 +251,17 @@ def spec_for_segment(
         # doesn't really matter what it is called, but this may catch errors
         assert spec.columns[0] in ["coefficient", segment_name]
 
-    if coefficients_file_name is None and isinstance(model_settings, dict) and "COEFFICIENTS" in model_settings:
+    if (
+        coefficients_file_name is None
+        and isinstance(model_settings, dict)
+        and "COEFFICIENTS" in model_settings
+    ):
         coefficients_file_name = model_settings["COEFFICIENTS"]
 
     if coefficients_file_name is None:
-        logger.warning(f"no coefficient file specified in model_settings for {spec_file_name}")
+        logger.warning(
+            f"no coefficient file specified in model_settings for {spec_file_name}"
+        )
         try:
             assert (spec.astype(float) == spec).all(axis=None)
         except (ValueError, AssertionError):
@@ -256,7 +271,9 @@ def spec_for_segment(
 
         return spec
 
-    coefficients = read_model_coefficients(state.filesystem, file_name=coefficients_file_name)
+    coefficients = read_model_coefficients(
+        state.filesystem, file_name=coefficients_file_name
+    )
 
     spec = eval_coefficients(state, spec, coefficients, estimator)
 
@@ -272,7 +289,9 @@ def read_model_coefficient_template(
     """
 
     if isinstance(model_settings, dict):
-        assert "COEFFICIENT_TEMPLATE" in model_settings, "'COEFFICIENT_TEMPLATE' not in model_settings in %s" % model_settings.get(
+        assert (
+            "COEFFICIENT_TEMPLATE" in model_settings
+        ), "'COEFFICIENT_TEMPLATE' not in model_settings in %s" % model_settings.get(
             "source_file_paths"
         )
         coefficients_file_name = model_settings["COEFFICIENT_TEMPLATE"]
@@ -298,7 +317,9 @@ def read_model_coefficient_template(
 
     if template.index.duplicated().any():
         dupes = template[template.index.duplicated(keep=False)].sort_index()
-        logger.warning(f"duplicate coefficient names in {coefficients_file_name}:\n{dupes}")
+        logger.warning(
+            f"duplicate coefficient names in {coefficients_file_name}:\n{dupes}"
+        )
         assert not template.index.duplicated().any()
 
     return template
@@ -371,7 +392,9 @@ def get_segment_coefficients(
         and model_settings["COEFFICIENT_TEMPLATE"] is not None
     ):
         legacy = False
-    elif "COEFFICIENTS" in model_settings and model_settings["COEFFICIENTS"] is not None:
+    elif (
+        "COEFFICIENTS" in model_settings and model_settings["COEFFICIENTS"] is not None
+    ):
         legacy = "COEFFICIENTS"
         warnings.warn(
             "Support for COEFFICIENTS without COEFFICIENT_TEMPLATE in model settings file will be removed."
@@ -390,8 +413,12 @@ def get_segment_coefficients(
 
     if legacy:
         constants = config.get_model_constants(model_settings)
-        legacy_coeffs_file_path = filesystem.get_config_file_path(model_settings[legacy])
-        omnibus_coefficients = pd.read_csv(legacy_coeffs_file_path, comment="#", index_col="coefficient_name")
+        legacy_coeffs_file_path = filesystem.get_config_file_path(
+            model_settings[legacy]
+        )
+        omnibus_coefficients = pd.read_csv(
+            legacy_coeffs_file_path, comment="#", index_col="coefficient_name"
+        )
         try:
             omnibus_coefficients_segment_name = omnibus_coefficients[segment_name]
         except KeyError:
@@ -399,12 +426,16 @@ def get_segment_coefficients(
             possible_keys = "\n- ".join(omnibus_coefficients.keys())
             logger.error(f"possible keys include: \n- {possible_keys}")
             raise
-        coefficients_dict = assign.evaluate_constants(omnibus_coefficients_segment_name, constants=constants)
+        coefficients_dict = assign.evaluate_constants(
+            omnibus_coefficients_segment_name, constants=constants
+        )
 
     else:
         coefficients_df = filesystem.read_model_coefficients(model_settings)
         template_df = read_model_coefficient_template(filesystem, model_settings)
-        coefficients_col = template_df[segment_name].map(coefficients_df.value).astype(float)
+        coefficients_col = (
+            template_df[segment_name].map(coefficients_df.value).astype(float)
+        )
 
         if coefficients_col.isnull().any():
             # show them the offending lines from interaction_coefficients_file
@@ -418,13 +449,17 @@ def get_segment_coefficients(
     return coefficients_dict
 
 
-def eval_nest_coefficients(nest_spec: LogitNestSpec | dict, coefficients: dict, trace_label: str) -> LogitNestSpec:
+def eval_nest_coefficients(
+    nest_spec: LogitNestSpec | dict, coefficients: dict, trace_label: str
+) -> LogitNestSpec:
     def replace_coefficients(nest: LogitNestSpec):
         if isinstance(nest, dict):
             assert "coefficient" in nest
             coefficient_name = nest["coefficient"]
             if isinstance(coefficient_name, str):
-                assert coefficient_name in coefficients, f"{coefficient_name} not in nest coefficients"
+                assert (
+                    coefficient_name in coefficients
+                ), f"{coefficient_name} not in nest coefficients"
                 nest["coefficient"] = coefficients[coefficient_name]
 
             assert "alternatives" in nest
@@ -433,7 +468,9 @@ def eval_nest_coefficients(nest_spec: LogitNestSpec | dict, coefficients: dict, 
                     replace_coefficients(alternative)
         elif isinstance(nest, LogitNestSpec):
             if isinstance(nest.coefficient, str):
-                assert nest.coefficient in coefficients, f"{nest.coefficient} not in nest coefficients"
+                assert (
+                    nest.coefficient in coefficients
+                ), f"{nest.coefficient} not in nest coefficients"
                 nest.coefficient = coefficients[nest.coefficient]
 
             for alternative in nest.alternatives:
@@ -466,12 +503,16 @@ def eval_coefficients(
         assert "value" in coefficients.columns
         coefficients = coefficients["value"].to_dict()
 
-    assert isinstance(coefficients, dict), "eval_coefficients doesn't grok type of coefficients: %s" % (type(coefficients))
+    assert isinstance(
+        coefficients, dict
+    ), "eval_coefficients doesn't grok type of coefficients: %s" % (type(coefficients))
 
     for c in spec.columns:
         if c == SPEC_LABEL_NAME:
             continue
-        spec[c] = spec[c].apply(lambda x: eval(str(x), {}, coefficients)).astype(np.float32)
+        spec[c] = (
+            spec[c].apply(lambda x: eval(str(x), {}, coefficients)).astype(np.float32)
+        )
 
     sharrow_enabled = state.settings.sharrow
     if sharrow_enabled:
@@ -601,9 +642,15 @@ def eval_utilities(
     if utilities is None or estimator or sharrow_enabled == "test":
         trace_label = tracing.extend_trace_label(trace_label, "eval_utils")
 
-        if state.settings.expression_profile and compute_settings.performance_log is None:
+        if (
+            state.settings.expression_profile
+            and compute_settings.performance_log is None
+        ):
             perf_log_file = Path(trace_label + ".log")
-        elif state.settings.expression_profile is False or compute_settings.performance_log is False:
+        elif (
+            state.settings.expression_profile is False
+            or compute_settings.performance_log is False
+        ):
             perf_log_file = None
         elif compute_settings.performance_log is True:
             perf_log_file = Path(trace_label + ".log")
@@ -639,16 +686,22 @@ def eval_utilities(
                         warnings.simplefilter("always")
                         with performance_timer.time_expression(expr):
                             if expr.startswith("@"):
-                                expression_value = eval(expr[1:], globals_dict, locals_dict)
+                                expression_value = eval(
+                                    expr[1:], globals_dict, locals_dict
+                                )
                             else:
                                 expression_value = fast_eval(choosers, expr)
 
                         if len(w) > 0:
                             for wrn in w:
-                                logger.warning(f"{trace_label} - {type(wrn).__name__} ({wrn.message}) evaluating: {str(expr)}")
+                                logger.warning(
+                                    f"{trace_label} - {type(wrn).__name__} ({wrn.message}) evaluating: {str(expr)}"
+                                )
 
                 except Exception as err:
-                    logger.exception(f"{trace_label} - {type(err).__name__} ({str(err)}) evaluating: {str(expr)}")
+                    logger.exception(
+                        f"{trace_label} - {type(err).__name__} ({str(err)}) evaluating: {str(expr)}"
+                    )
                     raise err
 
                 if log_alt_losers:
@@ -679,7 +732,9 @@ def eval_utilities(
             estimator.write_expression_values(df)
 
         # - compute_utilities
-        utilities = np.dot(expression_values.transpose(), spec.astype(np.float64).values)
+        utilities = np.dot(
+            expression_values.transpose(), spec.astype(np.float64).values
+        )
 
         timelogger.mark("simple flow", True, logger=logger, suffix=trace_label)
     else:
@@ -731,7 +786,9 @@ def eval_utilities(
             if trace_column_names is not None:
                 if isinstance(trace_column_names, str):
                     trace_column_names = [trace_column_names]
-                expression_values_df.columns = pd.MultiIndex.from_frame(choosers.loc[trace_targets, trace_column_names])
+                expression_values_df.columns = pd.MultiIndex.from_frame(
+                    choosers.loc[trace_targets, trace_column_names]
+                )
         else:
             expression_values_df = None
 
@@ -774,7 +831,9 @@ def eval_utilities(
             )
         except AssertionError as err:
             print(err)
-            misses = np.where(~np.isclose(sh_util, utilities.values, rtol=1e-2, atol=1e-6))
+            misses = np.where(
+                ~np.isclose(sh_util, utilities.values, rtol=1e-2, atol=1e-6)
+            )
             _sh_util_miss1 = sh_util[tuple(m[0] for m in misses)]
             _u_miss1 = utilities.values[tuple(m[0] for m in misses)]
             _sh_util_miss1 - _u_miss1
@@ -814,12 +873,16 @@ def eval_utilities(
     chunk_sizer.log_df(trace_label, "utilities", None)
 
     end_time = time.time()
-    logger.debug(f"simulate.eval_utils runtime: {timedelta(seconds=end_time - start_time)} {trace_label}")
+    logger.debug(
+        f"simulate.eval_utils runtime: {timedelta(seconds=end_time - start_time)} {trace_label}"
+    )
     timelogger.summary(logger, "simulate.eval_utils timing")
     return utilities
 
 
-def eval_variables(state: workflow.State, exprs, df, locals_d=None, trace_label: str | None = None):
+def eval_variables(
+    state: workflow.State, exprs, df, locals_d=None, trace_label: str | None = None
+):
     """
     Evaluate a set of variable expressions from a spec in the context
     of a given data table.
@@ -902,7 +965,9 @@ def eval_variables(state: workflow.State, exprs, df, locals_d=None, trace_label:
             values[expr] = expr_values
 
         except Exception as err:
-            logger.exception(f"Variable evaluation failed {type(err).__name__} ({str(err)}) evaluating: {str(expr)}")
+            logger.exception(
+                f"Variable evaluation failed {type(err).__name__} ({str(err)}) evaluating: {str(expr)}"
+            )
             raise err
 
     values = util.df_from_dict(values, index=df.index)
@@ -960,7 +1025,13 @@ def set_skim_wrapper_targets(df, skims, allow_partial_success: bool = True):
         such failure will be raised immediately, preventing partial success.
     """
 
-    skims = skims if isinstance(skims, list) else skims.values() if isinstance(skims, dict) else [skims]
+    skims = (
+        skims
+        if isinstance(skims, list)
+        else skims.values()
+        if isinstance(skims, dict)
+        else [skims]
+    )
     problems = []
 
     # assume any object in skims can be treated as a skim
@@ -1058,11 +1129,15 @@ def compute_nested_utilities(raw_utilities, nest_spec):
     for nest in logit.each_nest(nest_spec, post_order=True):
         name = nest.name
         if nest.is_leaf:
-            nested_utilities[name] = raw_utilities[name].astype(float) / nest.product_of_coefficients
+            nested_utilities[name] = (
+                raw_utilities[name].astype(float) / nest.product_of_coefficients
+            )
         else:
             # the alternative nested_utilities will already have been computed due to post_order
             with np.errstate(divide="ignore"):
-                nested_utilities[name] = nest.coefficient * np.log(np.exp(nested_utilities[nest.alternatives]).sum(axis=1))
+                nested_utilities[name] = nest.coefficient * np.log(
+                    np.exp(nested_utilities[nest.alternatives]).sum(axis=1)
+                )
 
     return nested_utilities
 
@@ -1096,7 +1171,9 @@ def compute_nested_exp_utilities(raw_utilities, nest_spec):
 
         if nest.is_leaf:
             # leaf_utility = raw_utility / nest.product_of_coefficients
-            nested_utilities[name] = raw_utilities[name].astype(float) / nest.product_of_coefficients
+            nested_utilities[name] = (
+                raw_utilities[name].astype(float) / nest.product_of_coefficients
+            )
 
         else:
             # nest node
@@ -1105,7 +1182,9 @@ def compute_nested_exp_utilities(raw_utilities, nest_spec):
             # if all nest alternative utilities are zero
             # but the resulting inf will become 0 when exp is applied below
             with np.errstate(divide="ignore"):
-                nested_utilities[name] = nest.coefficient * np.log(nested_utilities[nest.alternatives].sum(axis=1))
+                nested_utilities[name] = nest.coefficient * np.log(
+                    nested_utilities[nest.alternatives].sum(axis=1)
+                )
 
         # exponentiate the utility
         nested_utilities[name] = np.exp(nested_utilities[name])
@@ -1113,7 +1192,9 @@ def compute_nested_exp_utilities(raw_utilities, nest_spec):
     return nested_utilities
 
 
-def compute_nested_probabilities(state: workflow.State, nested_exp_utilities, nest_spec, trace_label):
+def compute_nested_probabilities(
+    state: workflow.State, nested_exp_utilities, nest_spec, trace_label
+):
     """
     compute nested probabilities for nest leafs and nodes
     probability for nest alternatives is simply the alternatives's local (to nest) probability
@@ -1277,18 +1358,26 @@ def eval_mnl(
         )
 
     if state.settings.use_explicit_error_terms:
-        utilities = logit.validate_utils(state, utilities, trace_label=trace_label, trace_choosers=choosers)
+        utilities = logit.validate_utils(
+            state, utilities, trace_label=trace_label, trace_choosers=choosers
+        )
 
         if custom_chooser:
-            choices, rands = custom_chooser(state, utilities, choosers, spec, trace_label)
+            choices, rands = custom_chooser(
+                state, utilities, choosers, spec, trace_label
+            )
         else:
-            choices, rands = logit.make_choices_utility_based(state, utilities, trace_label=trace_label)
+            choices, rands = logit.make_choices_utility_based(
+                state, utilities, trace_label=trace_label
+            )
 
         del utilities
         chunk_sizer.log_df(trace_label, "utilities", None)
 
     else:
-        probs = logit.utils_to_probs(state, utilities, trace_label=trace_label, trace_choosers=choosers)
+        probs = logit.utils_to_probs(
+            state, utilities, trace_label=trace_label, trace_choosers=choosers
+        )
         chunk_sizer.log_df(trace_label, "probs", probs)
 
         del utilities
@@ -1311,7 +1400,9 @@ def eval_mnl(
         chunk_sizer.log_df(trace_label, "probs", None)
 
     if have_trace_targets:
-        state.tracing.trace_df(choices, "%s.choices" % trace_label, columns=[None, trace_choice_name])
+        state.tracing.trace_df(
+            choices, "%s.choices" % trace_label, columns=[None, trace_choice_name]
+        )
         state.tracing.trace_df(rands, "%s.rands" % trace_label, columns=[None, "rand"])
 
     return choices
@@ -1408,7 +1499,9 @@ def eval_nl(
         )
 
     if state.settings.use_explicit_error_terms:
-        raw_utilities = logit.validate_utils(state, raw_utilities, allow_zero_probs=True, trace_label=trace_label)
+        raw_utilities = logit.validate_utils(
+            state, raw_utilities, allow_zero_probs=True, trace_label=trace_label
+        )
 
         # utilities of leaves and nests
         nested_utilities = compute_nested_utilities(raw_utilities, nest_spec)
@@ -1464,7 +1557,9 @@ def eval_nl(
             )
 
         # probabilities of alternatives relative to siblings sharing the same nest
-        nested_probabilities = compute_nested_probabilities(state, nested_exp_utilities, nest_spec, trace_label=trace_label)
+        nested_probabilities = compute_nested_probabilities(
+            state, nested_exp_utilities, nest_spec, trace_label=trace_label
+        )
         chunk_sizer.log_df(trace_label, "nested_probabilities", nested_probabilities)
 
         if want_logsums:
@@ -1483,7 +1578,9 @@ def eval_nl(
             )
 
         # global (flattened) leaf probabilities based on relative nest coefficients (in spec order)
-        base_probabilities = compute_base_probabilities(nested_probabilities, nest_spec, spec)
+        base_probabilities = compute_base_probabilities(
+            nested_probabilities, nest_spec, spec
+        )
         chunk_sizer.log_df(trace_label, "base_probabilities", base_probabilities)
 
         del nested_probabilities
@@ -1520,16 +1617,22 @@ def eval_nl(
                 trace_label,
             )
         else:
-            choices, rands = logit.make_choices(state, base_probabilities, trace_label=trace_label)
+            choices, rands = logit.make_choices(
+                state, base_probabilities, trace_label=trace_label
+            )
 
         del base_probabilities
         chunk_sizer.log_df(trace_label, "base_probabilities", None)
 
     if have_trace_targets:
-        state.tracing.trace_df(choices, "%s.choices" % trace_label, columns=[None, trace_choice_name])
+        state.tracing.trace_df(
+            choices, "%s.choices" % trace_label, columns=[None, trace_choice_name]
+        )
         state.tracing.trace_df(rands, f"{trace_label}.rands", columns=[None, "rand"])
         if want_logsums:
-            state.tracing.trace_df(logsums, f"{trace_label}.logsums", columns=[None, "logsum"])
+            state.tracing.trace_df(
+                logsums, f"{trace_label}.logsums", columns=[None, "logsum"]
+            )
 
     if want_logsums:
         choices = choices.to_frame("choice")
@@ -1615,7 +1718,11 @@ def _simple_simulate(
 
     # if tracing is not enabled, drop unused columns
     # if not estimation mode, drop unused columns
-    if (not have_trace_targets) and (estimator is None) and (compute_settings.drop_unused_columns):
+    if (
+        (not have_trace_targets)
+        and (estimator is None)
+        and (compute_settings.drop_unused_columns)
+    ):
         # drop unused variables in chooser table
         choosers = util.drop_unused_columns(
             choosers,
@@ -1665,9 +1772,23 @@ def _simple_simulate(
 
 def tvpb_skims(skims):
     def list_of_skims(skims):
-        return skims if isinstance(skims, list) else (skims.values() if isinstance(skims, dict) else [skims] if skims is not None else [])
+        return (
+            skims
+            if isinstance(skims, list)
+            else (
+                skims.values()
+                if isinstance(skims, dict)
+                else [skims]
+                if skims is not None
+                else []
+            )
+        )
 
-    return [skim for skim in list_of_skims(skims) if isinstance(skim, pathbuilder.TransitVirtualPathLogsumWrapper)]
+    return [
+        skim
+        for skim in list_of_skims(skims)
+        if isinstance(skim, pathbuilder.TransitVirtualPathLogsumWrapper)
+    ]
 
 
 def simple_simulate(
@@ -1844,7 +1965,9 @@ def eval_mnl_logsums(
 
     # trace utilities
     if have_trace_targets:
-        state.tracing.trace_df(logsums, "%s.logsums" % trace_label, column_labels=["alternative", "logsum"])
+        state.tracing.trace_df(
+            logsums, "%s.logsums" % trace_label, column_labels=["alternative", "logsum"]
+        )
 
     return logsums
 
@@ -1871,13 +1994,17 @@ def _preprocess_tvpb_logsums_on_choosers(choosers, spec, locals_d):
     spec_sh = spec.copy()
 
     def _replace_in_level(multiindex, level_name, *args, **kwargs):
-        y = multiindex.levels[multiindex.names.index(level_name)].str.replace(*args, **kwargs)
+        y = multiindex.levels[multiindex.names.index(level_name)].str.replace(
+            *args, **kwargs
+        )
         return multiindex.set_levels(y, level=level_name)
 
     # Preprocess TVPB logsums outside sharrow
     if "tvpb_logsum_odt" in locals_d:
         tvpb = locals_d["tvpb_logsum_odt"]
-        path_types = tvpb.tvpb.network_los.setting(f"TVPB_SETTINGS.{tvpb.recipe}.path_types").keys()
+        path_types = tvpb.tvpb.network_los.setting(
+            f"TVPB_SETTINGS.{tvpb.recipe}.path_types"
+        ).keys()
         assignments = {}
         for path_type in ["WTW", "DTW"]:
             if path_type not in path_types:
@@ -1899,7 +2026,9 @@ def _preprocess_tvpb_logsums_on_choosers(choosers, spec, locals_d):
 
     if "tvpb_logsum_dot" in locals_d:
         tvpb = locals_d["tvpb_logsum_dot"]
-        path_types = tvpb.tvpb.network_los.setting(f"TVPB_SETTINGS.{tvpb.recipe}.path_types").keys()
+        path_types = tvpb.tvpb.network_los.setting(
+            f"TVPB_SETTINGS.{tvpb.recipe}.path_types"
+        ).keys()
         assignments = {}
         for path_type in ["WTW", "WTD"]:
             if path_type not in path_types:
@@ -1993,7 +2122,9 @@ def eval_nl_logsums(
             "%s.nested_exp_utilities" % trace_label,
             column_labels=["alternative", "utility"],
         )
-        state.tracing.trace_df(logsums, "%s.logsums" % trace_label, column_labels=["alternative", "logsum"])
+        state.tracing.trace_df(
+            logsums, "%s.logsums" % trace_label, column_labels=["alternative", "logsum"]
+        )
 
     del nested_exp_utilities  # done with nested_exp_utilities
     chunk_sizer.log_df(trace_label, "nested_exp_utilities", None)

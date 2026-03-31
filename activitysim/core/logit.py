@@ -270,12 +270,18 @@ def utils_to_probs(
 
     if allow_zero_probs:
         if overflow_protection:
-            warnings.warn("cannot set overflow_protection with allow_zero_probs", stacklevel=2)
+            warnings.warn(
+                "cannot set overflow_protection with allow_zero_probs", stacklevel=2
+            )
             overflow_protection = utils_arr.dtype == np.float32 and utils_arr.max() > 85
             if overflow_protection:
-                raise ValueError("cannot prevent expected overflow with allow_zero_probs")
+                raise ValueError(
+                    "cannot prevent expected overflow with allow_zero_probs"
+                )
     else:
-        overflow_protection = overflow_protection or (utils_arr.dtype == np.float32 and utils_arr.max() > 85)
+        overflow_protection = overflow_protection or (
+            utils_arr.dtype == np.float32 and utils_arr.max() > 85
+        )
 
     if overflow_protection:
         # exponentiated utils will overflow, downshift them
@@ -365,11 +371,15 @@ def add_ev1_random(state: workflow.State, df: pd.DataFrame):
         Utilities with EV1 errors added.
     """
     nest_utils_for_choice = df.copy()
-    nest_utils_for_choice += state.get_rn_generator().gumbel_for_df(nest_utils_for_choice, n=nest_utils_for_choice.shape[1])
+    nest_utils_for_choice += state.get_rn_generator().gumbel_for_df(
+        nest_utils_for_choice, n=nest_utils_for_choice.shape[1]
+    )
     return nest_utils_for_choice
 
 
-def choose_from_tree(nest_utils, all_alternatives, logit_nest_groups, nest_alternatives_by_name):
+def choose_from_tree(
+    nest_utils, all_alternatives, logit_nest_groups, nest_alternatives_by_name
+):
     for level, nest_names in logit_nest_groups.items():
         if level == 1:
             next_level_alts = nest_alternatives_by_name[nest_names[0]]
@@ -411,7 +421,9 @@ def make_choices_explicit_error_term_nl(
         Choice indices aligned to `alt_order_array`.
     """
     if trace_label:
-        state.tracing.trace_df(nested_utilities, tracing.extend_trace_label(trace_label, "nested_utils"))
+        state.tracing.trace_df(
+            nested_utilities, tracing.extend_trace_label(trace_label, "nested_utils")
+        )
     nest_utils_for_choice = add_ev1_random(state, nested_utilities)
 
     all_alternatives = set(nest.name for nest in each_nest(nest_spec, type="leaf"))
@@ -424,7 +436,9 @@ def make_choices_explicit_error_term_nl(
     # to zero. Once the tree is walked (all alternatives have been processed), take the product of the alternatives in
     # each leaf's alternative list. Then pick the only alternative with entry 1, all others must be 0.
     choices = nest_utils_for_choice.apply(
-        lambda x: choose_from_tree(x, all_alternatives, logit_nest_groups, nest_alternatives_by_name),
+        lambda x: choose_from_tree(
+            x, all_alternatives, logit_nest_groups, nest_alternatives_by_name
+        ),
         axis=1,
     )
     missing_choices = choices.isnull()  # TODO: should we check for infs here too?
@@ -447,7 +461,9 @@ def make_choices_explicit_error_term_nl(
     return choices
 
 
-def make_choices_explicit_error_term_mnl(state, utilities, trace_label, trace_choosers=None, allow_bad_utils=False) -> pd.Series:
+def make_choices_explicit_error_term_mnl(
+    state, utilities, trace_label, trace_choosers=None, allow_bad_utils=False
+) -> pd.Series:
     """
     Make EET choices for a multinomial logit model by adding EV1 errors.
 
@@ -465,7 +481,9 @@ def make_choices_explicit_error_term_mnl(state, utilities, trace_label, trace_ch
         Choice indices aligned to the utilities columns order.
     """
     if trace_label:
-        state.tracing.trace_df(utilities, tracing.extend_trace_label(trace_label, "utilities"))
+        state.tracing.trace_df(
+            utilities, tracing.extend_trace_label(trace_label, "utilities")
+        )
     utilities_incl_unobs = add_ev1_random(state, utilities)
     if trace_label:
         state.tracing.trace_df(
@@ -500,7 +518,9 @@ def make_choices_explicit_error_term(
 ) -> pd.Series:
     trace_label = tracing.extend_trace_label(trace_label, "make_choices_eet")
     if nest_spec is None:
-        choices = make_choices_explicit_error_term_mnl(state, utilities, trace_label, trace_choosers, allow_bad_utils)
+        choices = make_choices_explicit_error_term_mnl(
+            state, utilities, trace_label, trace_choosers, allow_bad_utils
+        )
     else:
         choices = make_choices_explicit_error_term_nl(
             state,
@@ -574,7 +594,9 @@ def make_choices(
     # probs should sum to 1 across each row
 
     BAD_PROB_THRESHOLD = 0.001
-    bad_probs = probs.sum(axis=1).sub(np.ones(len(probs.index))).abs() > BAD_PROB_THRESHOLD * np.ones(len(probs.index))
+    bad_probs = probs.sum(axis=1).sub(
+        np.ones(len(probs.index))
+    ).abs() > BAD_PROB_THRESHOLD * np.ones(len(probs.index))
 
     if bad_probs.any() and not allow_bad_probs:
         report_bad_choices(
@@ -625,9 +647,13 @@ def interaction_dataset(
 
     """
     if not choosers.index.is_unique:
-        raise TableIndexError("ERROR: choosers index is not unique, sample will not work correctly")
+        raise TableIndexError(
+            "ERROR: choosers index is not unique, sample will not work correctly"
+        )
     if not alternatives.index.is_unique:
-        raise TableIndexError("ERROR: alternatives index is not unique, sample will not work correctly")
+        raise TableIndexError(
+            "ERROR: alternatives index is not unique, sample will not work correctly"
+        )
 
     numchoosers = len(choosers)
     numalts = len(alternatives)
@@ -637,7 +663,9 @@ def interaction_dataset(
     alts_idx = np.arange(numalts)
 
     if sample_size < numalts:
-        sample = state.get_rn_generator().choice_for_df(choosers, alts_idx, sample_size, replace=False)
+        sample = state.get_rn_generator().choice_for_df(
+            choosers, alts_idx, sample_size, replace=False
+        )
     else:
         sample = np.tile(alts_idx, numchoosers)
 
@@ -649,7 +677,8 @@ def interaction_dataset(
         alts_sample[alt_index_id] = alts_sample.index
 
     logger.debug(
-        "interaction_dataset pre-merge choosers %s alternatives %s alts_sample %s" % (choosers.shape, alternatives.shape, alts_sample.shape)
+        "interaction_dataset pre-merge choosers %s alternatives %s alts_sample %s"
+        % (choosers.shape, alternatives.shape, alts_sample.shape)
     )
 
     # no need to do an expensive merge of alts and choosers
@@ -718,14 +747,18 @@ def validate_nest_spec(nest_spec: dict | LogitNestSpec, trace_label: str):
     duplicates = []
     for nest in each_nest(nest_spec):
         if nest.name in keys:
-            logger.error(f"validate_nest_spec:duplicate nest key '{nest.name}' in nest spec - {trace_label}")
+            logger.error(
+                f"validate_nest_spec:duplicate nest key '{nest.name}' in nest spec - {trace_label}"
+            )
             duplicates.append(nest.name)
 
         keys.append(nest.name)
         # nest.print()
 
     if duplicates:
-        raise ModelConfigurationError(f"validate_nest_spec:duplicate nest key/s '{duplicates}' in nest spec - {trace_label}")
+        raise ModelConfigurationError(
+            f"validate_nest_spec:duplicate nest key/s '{duplicates}' in nest spec - {trace_label}"
+        )
 
 
 def _each_nest(spec: LogitNestSpec, parent_nest, post_order):
@@ -758,7 +791,9 @@ def _each_nest(spec: LogitNestSpec, parent_nest, post_order):
     if isinstance(spec, LogitNestSpec):
         name = spec.name
         coefficient = spec.coefficient
-        assert isinstance(coefficient, int | float), f"Coefficient '{name}' ({coefficient}) not a number"  # forgot to eval coefficient?
+        assert isinstance(
+            coefficient, int | float
+        ), f"Coefficient '{name}' ({coefficient}) not a number"  # forgot to eval coefficient?
         alternatives = []
         for a in spec.alternatives:
             if isinstance(a, dict):
@@ -821,7 +856,9 @@ def each_nest(nest_spec: dict | LogitNestSpec, type=None, post_order=False):
             Nest object with info about the current node (nest or leaf)
     """
     if type is not None and type not in Nest.nest_types():
-        raise ModelConfigurationError("Unknown nest type '%s' in call to each_nest" % type)
+        raise ModelConfigurationError(
+            "Unknown nest type '%s' in call to each_nest" % type
+        )
 
     if isinstance(nest_spec, dict):
         nest_spec = LogitNestSpec.model_validate(nest_spec)
@@ -838,7 +875,11 @@ def count_nests(nest_spec):
 
     def count_each_nest(spec, count):
         if isinstance(spec, dict):
-            return count + 1 + sum([count_each_nest(alt, count) for alt in spec["alternatives"]])
+            return (
+                count
+                + 1
+                + sum([count_each_nest(alt, count) for alt in spec["alternatives"]])
+            )
         else:
             assert isinstance(spec, str)
             return 1

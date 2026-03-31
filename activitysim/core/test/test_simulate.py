@@ -26,7 +26,9 @@ def spec_name(data_dir):
 @pytest.fixture
 def state(data_dir) -> workflow.State:
     state = workflow.State()
-    state.initialize_filesystem(working_dir=os.path.dirname(__file__), data_dir=(data_dir,)).default_settings()
+    state.initialize_filesystem(
+        working_dir=os.path.dirname(__file__), data_dir=(data_dir,)
+    ).default_settings()
     return state
 
 
@@ -65,7 +67,9 @@ def test_read_model_spec(state, spec_name):
 def test_eval_variables(state, spec, data):
     result = simulate.eval_variables(state, spec.index, data)
 
-    expected = pd.DataFrame([[1, 0, 4, 1], [0, 1, 4, 1], [0, 1, 5, 1]], index=data.index, columns=spec.index)
+    expected = pd.DataFrame(
+        [[1, 0, 4, 1], [0, 1, 4, 1], [0, 1, 5, 1]], index=data.index, columns=spec.index
+    )
 
     expected[expected.columns[0]] = expected[expected.columns[0]].astype(np.int8)
     expected[expected.columns[1]] = expected[expected.columns[1]].astype(np.int8)
@@ -251,12 +255,16 @@ def test_compute_nested_utilities(nest_spec):
     constructed_nested_utilities = pd.DataFrame(index=raw_utilities.index)
 
     constructed_nested_utilities[leaf_utilities.columns] = leaf_utilities
-    constructed_nested_utilities["alt0"] = alt0_nest_coefficient * np.log(np.exp(leaf_utilities[["alt0.0", "alt0.1"]]).sum(axis=1))
+    constructed_nested_utilities["alt0"] = alt0_nest_coefficient * np.log(
+        np.exp(leaf_utilities[["alt0.0", "alt0.1"]]).sum(axis=1)
+    )
     constructed_nested_utilities["root"] = nest_spec["coefficient"] * np.log(
         np.exp(constructed_nested_utilities[["alt1", "alt0"]]).sum(axis=1)
     )
 
-    assert np.allclose(nested_utilities, constructed_nested_utilities[nested_utilities.columns]), "Mismatch in nested utilities"
+    assert np.allclose(
+        nested_utilities, constructed_nested_utilities[nested_utilities.columns]
+    ), "Mismatch in nested utilities"
 
 
 def test_eval_nl_logsums_eet_vs_non_eet(state, nest_spec):
@@ -321,4 +329,6 @@ def test_eval_nl_logsums_eet_vs_non_eet(state, nest_spec):
     assert "logsum" in result_non_eet.columns, "non-EET result missing logsum column"
 
     # Logsums are deterministic — they must be identical across paths
-    assert np.allclose(result_eet["logsum"].values, result_non_eet["logsum"].values, rtol=1e-10)
+    assert np.allclose(
+        result_eet["logsum"].values, result_non_eet["logsum"].values, rtol=1e-10
+    )
