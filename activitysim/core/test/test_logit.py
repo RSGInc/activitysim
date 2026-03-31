@@ -9,7 +9,7 @@ import pandas as pd
 import pandas.testing as pdt
 import pytest
 
-from activitysim.core import logit, workflow
+from activitysim.core import logit, simulate, workflow
 from activitysim.core.exceptions import InvalidTravelError
 from activitysim.core.simulate import eval_variables
 
@@ -71,6 +71,19 @@ def utilities(choosers, spec, test_data):
     )
 
 
+@pytest.fixture(scope="module")
+def interaction_choosers():
+    return pd.DataFrame({"attr": ["a", "b", "c", "b"]}, index=["w", "x", "y", "z"])
+
+
+@pytest.fixture(scope="module")
+def interaction_alts():
+    return pd.DataFrame({"prop": [10, 20, 30, 40]}, index=[1, 2, 3, 4])
+
+
+#
+# Utility Validation Tests
+#
 def test_validate_utils_replaces_unavailable_values():
     state = workflow.State().default_settings()
     utils = pd.DataFrame([[0.0, logit.UTIL_MIN - 1.0], [1.0, 2.0]])
@@ -112,6 +125,9 @@ def test_validate_utils_does_not_mutate_input():
     pdt.assert_frame_equal(utils, original)
 
 
+#
+# `utils_to_probs` Tests
+#
 def test_utils_to_probs_logsums_with_overflow_protection():
     state = workflow.State().default_settings()
     utils = pd.DataFrame(
@@ -238,6 +254,9 @@ def test_utils_to_probs_raises():
     assert np.asarray(z).ravel() == pytest.approx(np.asarray([0.0, 0.0, 1.0, 0.0]))
 
 
+#
+# `make_choices` Tests
+#
 def test_make_choices_only_one():
     state = workflow.State().default_settings()
     probs = pd.DataFrame(
@@ -259,6 +278,45 @@ def test_make_choices_real_probs(utilities):
         choices,
         pd.Series([1, 2], index=[0, 1]),
         check_dtype=False,
+    )
+
+
+def test_different_order_make_choices():
+    # check if, when we shuffle utilities, make_choices chooses the same alternatives
+    state = workflow.State().default_settings()
+
+    # increase number of choosers and alternatives for realism
+    n_choosers = 100
+    n_alts = 50
+    data = np.random.rand(n_choosers, n_alts)
+    chooser_ids = np.arange(n_choosers)
+    alt_ids = [f"alt_{i}" for i in range(n_alts)]
+
+    utilities = pd.DataFrame(
+        data,
+        index=pd.Index(chooser_ids, name="chooser_id"),
+        columns=alt_ids,
+    )
+
+    # We need a stable RNG that gives the same random numbers for the same chooser_id
+    # regardless of row order. ActivitySim's random.Random does this.
+    state.get_rn_generator().add_channel("chooser_id", utilities)
+    state.get_rn_generator().begin_step("test_step")
+
+    probs = logit.utils_to_probs(state, utilities, trace_label=None)
+    choices, rands = logit.make_choices(state, probs)
+
+    # shuffle utilities (rows) and make_choices again
+    # We must reset the step offset so the RNG produces the same sequence for the same IDs
+    state.get_rn_generator().end_step("test_step")
+    state.get_rn_generator().begin_step("test_step")
+    utilities_shuffled = utilities.sample(frac=1, random_state=42)
+    probs_shuffled = logit.utils_to_probs(state, utilities_shuffled, trace_label=None)
+    choices_shuffled, rands_shuffled = logit.make_choices(state, probs_shuffled)
+
+    # sorting both to ensure comparison is on the same index order
+    pdt.assert_series_equal(
+        choices.sort_index(), choices_shuffled.sort_index(), check_dtype=False
     )
 
 
@@ -296,6 +354,9 @@ def test_make_choices_matches_random_draws():
     )
 
 
+#
+# EV1 Random Tests
+#
 def test_add_ev1_random():
     class DummyRNG:
         def gumbel_for_df(self, df, n):
@@ -340,6 +401,9 @@ def test_add_ev1_random():
     )
 
 
+#
+# Nested Logit Structure Tests
+#
 def test_group_nest_names_by_level():
     nest_spec = {
         "name": "root",
@@ -393,6 +457,9 @@ def test_choose_from_tree_raises_on_missing_leaf():
         )
 
 
+#
+# EET Choice Behavior Tests
+#
 def test_make_choices_eet_mnl(monkeypatch):
     def fake_add_ev1_random(_state, _df):
         return pd.DataFrame(
@@ -471,6 +538,9 @@ def test_make_choices_utility_based_sets_zero_rands(monkeypatch):
     pdt.assert_series_equal(rands, pd.Series([0, 0], index=[11, 12]))
 
 
+#
+# EET vs non-EET Choice Behavior Tests
+#
 def test_make_choices_vs_eet_same_distribution():
     """With many draws, make_choices (probability-based) and
     make_choices_explicit_error_term_mnl (EET) should produce roughly the
@@ -529,16 +599,105 @@ def test_make_choices_vs_eet_same_distribution():
     )
 
 
-@pytest.fixture(scope="module")
-def interaction_choosers():
-    return pd.DataFrame({"attr": ["a", "b", "c", "b"]}, index=["w", "x", "y", "z"])
+def test_make_choices_vs_eet_nl_same_distribution():
+    """With many draws, nested logit choices via probabilities and
+    nested logit choices via EET should produce the same empirical distribution."""
+    n_draws = 100_000
+    a_tol = 0.01
+
+    nest_spec = {
+        "name": "root",
+        "coefficient": 1.0,
+        "alternatives": [
+            {"name": "motorized", "coefficient": 0.5, "alternatives": ["car", "bus"]},
+            "walk",
+        ],
+    }
+    # Utilities for car, bus, walk
+    # For NL, we need utilities for all nodes in the tree for EET,
+    # but for probability-based choice we usually use the flattened/logsummed probabilities.
+    # To compare them fairly, we use the same base utilities.
+    # car=0.5, bus=0.2, walk=0.4
+    utils_df = pd.DataFrame(
+        [[0.5, 0.2, 0.4, 0.0, 0.0]],
+        columns=["car", "bus", "walk", "motorized", "root"],
+    )
+    utils_df = pd.concat([utils_df] * n_draws, ignore_index=True)
+    alt_order_array = np.array(["car", "bus", "walk"])
+
+    # 1. Probability-based Nested Logit choices
+    mc_rng = np.random.default_rng(42)
+
+    class MCDummyRNG:
+        def random_for_df(self, df, n=1):
+            return mc_rng.random((len(df), n))
+
+    class MCDummyState:
+        @staticmethod
+        def get_rn_generator():
+            return MCDummyRNG()
+
+        def default_settings(self):
+            return self
+
+    # Compute probabilities for NL using simulation logic
+    nested_exp_utilities = simulate.compute_nested_exp_utilities(
+        utils_df[["car", "bus", "walk"]], nest_spec
+    )
+    nested_probabilities = simulate.compute_nested_probabilities(
+        MCDummyState(), nested_exp_utilities, nest_spec, trace_label=None
+    )
+    probs = simulate.compute_base_probabilities(
+        nested_probabilities, nest_spec, utils_df[["car", "bus", "walk"]]
+    )
+    choices_mc, _ = logit.make_choices(MCDummyState(), probs, trace_label=None)
+
+    # 2. EET-based Nested Logit choices
+    eet_rng = np.random.default_rng(123)
+
+    class EETDummyRNG:
+        def gumbel_for_df(self, df, n):
+            return eet_rng.gumbel(size=(len(df), n))
+
+    class EETDummyState:
+        @staticmethod
+        def get_rn_generator():
+            return EETDummyRNG()
+
+        def default_settings(self):
+            return self
+
+        @property
+        def tracing(self):
+            import activitysim.core.tracing as tracing
+
+            return tracing
+
+    # For EET NL, we provide the utilities for all nodes.
+    # compute_nested_utilities handles the division by nesting coefficients for leaves
+    # and the logsum * coefficient for internal nodes.
+    nested_utilities = simulate.compute_nested_utilities(
+        utils_df[["car", "bus", "walk"]], nest_spec
+    )
+
+    choices_eet = logit.make_choices_explicit_error_term_nl(
+        EETDummyState(),
+        nested_utilities,
+        alt_order_array,
+        nest_spec,
+        trace_label=None,
+    )
+
+    mc_fracs = np.bincount(choices_mc.values.astype(int), minlength=3) / n_draws
+    eet_fracs = np.bincount(choices_eet.values.astype(int), minlength=3) / n_draws
+
+    # They should be close
+    np.testing.assert_allclose(mc_fracs, eet_fracs, atol=a_tol)
 
 
-@pytest.fixture(scope="module")
-def interaction_alts():
-    return pd.DataFrame({"prop": [10, 20, 30, 40]}, index=[1, 2, 3, 4])
-
-
+#
+# Interaction Dataset Tests
+#
 def test_interaction_dataset_no_sample(interaction_choosers, interaction_alts):
     expected = pd.DataFrame(
         {

@@ -80,7 +80,7 @@ Refer to the :ref:`Run the Primary Example` section to learn how to run the prim
 Using Jupyter Notebook
 ______________________
 
-ActivitySim includes a `Jupyter Notebook <https://jupyter.org>`__ recipe book with interactive examples. 
+ActivitySim includes a `Jupyter Notebook <https://jupyter.org>`__ recipe book with interactive examples.
 
 * To start JupyterLab, from the ActivitySim project directory run ``uv run jupyter lab``. This will start the JupyterLab server and pop up a browser window with the interactive development environment.
 * Navigate to the ``examples/prototype_mtc/notebooks`` folder and select a notebook to learn more:
@@ -283,3 +283,18 @@ With the set of output CSV files, the user can trace ActivitySim calculations in
 help debug data and/or logic errors.
 
 Refer to :ref:`trace` for more details on configuring tracing and the various output files.
+
+.. _explicit_error_terms_ways_to_run :
+
+Explicit Error Terms
+____________________
+
+By default, ActivitySim makes choices using analytical probabilities derived from systematic utilities.
+Alternatively, users can enable Explicit Error Terms (EET) by setting ``use_explicit_error_terms: True``
+in the global or model-specific settings.
+
+In EET mode, unobserved utility components are drawn directly from the Gumbel distribution (EV1) and added
+to the systematic utilities. The alternative with the highest total utility is then selected. This approach
+is particularly useful for reducing simulation noise and improving consistency when comparing scenarios
+where only a subset of alternatives has changed, as it maintains the same unobserved error draws for
+alternatives that remain constant.
