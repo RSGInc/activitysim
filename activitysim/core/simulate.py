@@ -1410,20 +1410,6 @@ def eval_nl(
     if state.settings.use_explicit_error_terms:
         raw_utilities = logit.validate_utils(state, raw_utilities, allow_zero_probs=True, trace_label=trace_label)
 
-        # validate_utils uses allow_zero_probs=True because individual nests
-        # can legitimately have all alternatives unavailable. But we still need
-        # to catch choosers where *every* leaf alternative is unavailable.
-        all_unavailable = (raw_utilities == logit.UTIL_UNAVAILABLE).all(axis=1)
-        if all_unavailable.any():
-            logit.report_bad_choices(
-                state,
-                all_unavailable,
-                raw_utilities,
-                trace_label=tracing.extend_trace_label(trace_label, "zero_prob_utils"),
-                trace_choosers=choosers,
-                msg="all alternatives have zero probability",
-            )
-
         # utilities of leaves and nests
         nested_utilities = compute_nested_utilities(raw_utilities, nest_spec)
         chunk_sizer.log_df(trace_label, "nested_utilities", nested_utilities)

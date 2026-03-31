@@ -179,7 +179,19 @@ def validate_utils(
 
     arr_sum = utils_arr.sum(axis=1)
 
-    if not allow_zero_probs:
+    if allow_zero_probs:
+        # only worry if all alts for a chooser are unavailable, which would lead to all zero probabilities and thus no choice
+        all_unavailable = (utils_arr == UTIL_UNAVAILABLE).all(axis=1)
+        if all_unavailable.any():
+            report_bad_choices(
+                state,
+                all_unavailable,
+                utils_arr,
+                trace_label=tracing.extend_trace_label(trace_label, "zero_prob_utils"),
+                msg="all alternatives have zero probability",
+                trace_choosers=trace_choosers,
+            )
+    else:
         zero_probs = arr_sum <= utils_arr.shape[1] * UTIL_UNAVAILABLE
         if zero_probs.any():
             report_bad_choices(
