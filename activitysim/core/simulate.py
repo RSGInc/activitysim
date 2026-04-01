@@ -32,6 +32,7 @@ from activitysim.core.configuration.logit import (
     LogitNestSpec,
     TemplatedLogitComponentSettings,
 )
+
 if TYPE_CHECKING:
     from activitysim.core.estimation import Estimator
 from activitysim.core.fast_eval import fast_eval
@@ -42,8 +43,6 @@ from activitysim.core.simulate_consts import (
     SPEC_LABEL_NAME,
 )
 from activitysim.core.exceptions import ModelConfigurationError
-
-
 
 logger = logging.getLogger(__name__)
 
