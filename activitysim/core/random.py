@@ -9,8 +9,8 @@ from builtins import object, range
 import numpy as np
 import pandas as pd
 
-from activitysim.core.exceptions import DuplicateLoadableObjectError, TableIndexError
 from activitysim.core.util import reindex
+from activitysim.core.exceptions import DuplicateLoadableObjectError, TableIndexError
 
 from .tracing import print_elapsed_time
 

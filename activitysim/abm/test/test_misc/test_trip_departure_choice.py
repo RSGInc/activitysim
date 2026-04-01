@@ -1,10 +1,7 @@
-from __future__ import annotations
-
-import os
-
 import numpy as np
 import pandas as pd
 import pytest
+import os
 
 import activitysim.abm.models.trip_departure_choice as tdc
 from activitysim.abm.models.util.trip import get_time_windows

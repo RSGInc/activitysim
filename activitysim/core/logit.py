@@ -116,7 +116,7 @@ def utils_to_logsums(utils, exponentiated=False, allow_zero_probs=False):
 
     # fixme - conversion to float not needed in either case?
     # utils_arr = utils.values.astype('float')
-    utils_arr = utils.to_numpy(copy=True)
+    utils_arr = utils.values
     if not exponentiated:
         utils_arr = np.exp(utils_arr)
 
@@ -173,7 +173,7 @@ def validate_utils(
     """
     trace_label = tracing.extend_trace_label(trace_label, "validate_utils")
 
-    utils_arr = utils.to_numpy(copy=True)
+    utils_arr = utils.values
 
     np.putmask(utils_arr, utils_arr <= UTIL_MIN, UTIL_UNAVAILABLE)
 
@@ -254,7 +254,7 @@ def utils_to_probs(
 
     # fixme - conversion to float not needed in either case?
     # utils_arr = utils.values.astype('float')
-    utils_arr = utils.to_numpy(copy=True)
+    utils_arr = utils.values
 
     if allow_zero_probs:
         if overflow_protection:
@@ -491,7 +491,6 @@ def make_choices_explicit_error_term_mnl(
             trace_choosers=trace_choosers,
         )
     choices = pd.Series(choices, index=utilities_incl_unobs.index)
-
     return choices
 
 
@@ -636,11 +635,11 @@ def interaction_dataset(
     """
     if not choosers.index.is_unique:
         raise TableIndexError(
-            "ERROR: choosers index is not unique, sample will not work correctly"
+            "ERROR: choosers index is not unique, " "sample will not work correctly"
         )
     if not alternatives.index.is_unique:
         raise TableIndexError(
-            "ERROR: alternatives index is not unique, sample will not work correctly"
+            "ERROR: alternatives index is not unique, " "sample will not work correctly"
         )
 
     numchoosers = len(choosers)
