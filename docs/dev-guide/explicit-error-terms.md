@@ -97,17 +97,19 @@ also be obtained by using Monte Carlo simulation for the sampling part of locati
 (explicit_error_terms_memory)=
 ### Memory usage
 
-EET in its current implementation also increase memory pressure during location sampling.
+EET in its current implementation also increases memory pressure during location sampling.
 During the sampling step, an array of size (number of choosers, number of alternatives,
 number of samples) is allocated for all random error terms. This can quickly become unwieldy
-for machines with limited memory and it is likely that chunking will be needed.
+for machines with limited memory, and [chunking](../users-guide/performance/chunking.md) will
+likely be needed.
 
-When chunking is needed and explicit chunking is used, using fractional values for the chunk
-size rather than absolute numbers of choosers is often a better fit. This is because the individual
-steps of location choice models (location sampling, location logsums, and location choice from the
-sampled choice set) all have very different chooser characteristics, but the chunk size currently
-can only be set at the model level. Using absolute values for the explicit chunk size would lead to
-a large number of chunks for the logsum calculations, which is relatively slow.
+When chunking is needed and [explicit chunking](../users-guide/performance/chunking.md#explicit-chunking)
+is used, using fractional values for the chunk size rather than absolute numbers of choosers is
+often a better fit. This is because the individual steps of location choice models
+(location sampling, location logsums, and location choice from the sampled choice set) all have
+very different chooser characteristics, but the chunk size currently can only be set at the model
+level. Using absolute values for the explicit chunk size would lead to a large number of chunks
+for the logsum calculations, which is relatively slow.
 
 
 ## Implementation Details and Adding New Models
