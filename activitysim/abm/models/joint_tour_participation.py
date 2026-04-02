@@ -429,9 +429,8 @@ def joint_tour_participation(
         if i not in model_settings.compute_settings.protect_columns:
             model_settings.compute_settings.protect_columns.append(i)
 
-    # TODO EET: this is related to the difference in nested logit and logit choice as per comment in
-    # make_choices_utility_based. As soon as alt_order_array is removed from arguments to
-    # make_choices_explicit_error_term_nl this guard can be removed
+    # This is related to the difference in nested logit and logit choice. As soon as alt_order_array
+    # is removed from arguments to make_choices_explicit_error_term_nl this guard can be removed.
     if state.settings.use_explicit_error_terms:
         assert (
             nest_spec is None
