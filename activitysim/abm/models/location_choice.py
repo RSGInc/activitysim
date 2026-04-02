@@ -1019,15 +1019,6 @@ def iterate_location_choice(
     ) = None  # initialize to None, will be populated in first iteration
 
     for iteration in range(1, max_iterations + 1):
-        # reset rng offsets to identical state on each iteration. This ensures that the same set of random numbers is
-        # used on each iteration. Only applying when using EET for now because this will need changes to integration
-        # tests, but we will probably want this for MC simulation as well.
-        if state.settings.use_explicit_error_terms and iteration > 1:
-            logger.debug(
-                f"{trace_label} resetting random number generator offsets for iteration {iteration}"
-            )
-            state.get_rn_generator().reset_offsets_for_step(state.current_model_name)
-
         persons_merged_df_ = persons_merged_df.copy()
 
         if spc.use_shadow_pricing and iteration > 1:
@@ -1039,6 +1030,18 @@ def iterate_location_choice(
                     persons_merged_df_.index.isin(spc.sampled_persons.index)
                 ]
                 persons_merged_df_ = persons_merged_df_.sort_index()
+
+        # reset rng offsets to identical state on each iteration. This ensures that the same set of random numbers is
+        # used on each iteration. Note this has to happen AFTER updating shadow prices because the simulation method
+        # draws random numbers.
+        # Only applying when using EET for now because this will need changes to integration
+        # tests, but it's probably a good idea for MC simulation as well.
+        if state.settings.use_explicit_error_terms and iteration > 1:
+            logger.debug(
+                f"{trace_label} resetting random number generator offsets for iteration {iteration}"
+            )
+            state.get_rn_generator().reset_offsets_for_step(state.current_model_name)
+
 
         choices_df_, save_sample_df = run_location_choice(
             state,
