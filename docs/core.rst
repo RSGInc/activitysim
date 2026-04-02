@@ -327,9 +327,9 @@ Explicit Error Terms
 ^^^^^^^^^^^^^^^^^^^^
 
 By default, ActivitySim makes choices by calculating analytical probabilities and then drawing once from
-the cumulative distribution. With Explicit Error Terms (EET), enabled by setting
-``use_explicit_error_terms: True`` in ``settings.yaml``, ActivitySim instead draws an EV1 (Gumbel) error
-term for each available alternative, adds this to the observed utility, and chooses the maximum total utility.
+the cumulative distribution for each chooser. With Explicit Error Terms (EET), enabled by setting
+``use_explicit_error_terms: True`` in ``settings.yaml``, ActivitySim instead draws a standard EV1 (Gumbel) error
+term for each chooser-alternative pair, adds it to the observed utility, and chooses the maximum total utility.
 
 EET changes the final simulation step, not the utility expressions, availability logic, or nesting
 structure. In practice, it can reduce Monte Carlo noise in scenario comparisons.

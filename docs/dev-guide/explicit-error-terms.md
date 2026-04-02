@@ -1,5 +1,5 @@
 (explicit-error-terms-dev)=
-# Explicit Error Terms for Developers
+# Explicit Error Terms
 
 Explicit Error Terms (EET) is an alternative way to simulate choices from ActivitySim's
 logit models. It keeps the same systematic utilities and the same random-utility
@@ -53,18 +53,16 @@ For EET to reduce simulation noise, it is important that alternatives of a choic
 keep the same unobserved error term in different scenario runs. This is intimately tied
 to how random numbers are generated; see {ref}`random_in_detail` for the underlying
 random-number stream design and the `activitysim.core.random` API.
-Because unchanged alternatives can keep the same unobserved draws, changes to choices in
-can only happen when the observed utility of an alternative increases. This is not the case
-for the Monte Carlo simulation method, where the draws are based on probabilities, which
-necessarily change for all alternatives if any observed utility changes.
+Because unchanged alternatives can keep the same unobserved draws, changes to choices between
+scenarios can only happen when the observed utility of an alternative increases. This is not
+the case for the Monte Carlo simulation method, where the draws are based on probabilities,
+which necessarily change for all alternatives if any observed utility changes.
 
-This also means that one should use the same setting in all runs. Comparing a baseline run
-with EET to a scenario run without EET mixes two simulation methods and makes differences
-harder to interpret.
-
-Aggregate choice patterns should remain statistically the same as for the default
-probability-based method. The project test suite includes parity tests for MNL, NL,
-and interaction-based simulations.
+This also means that it is advisable to use the same setting in all runs. Comparing a baseline
+run with EET to a scenario run without EET mixes two simulation methods and can make differences
+harder to interpret. Aggregate choice patterns should remain statistically the same
+as for the default probability-based method. The project test suite includes parity tests for
+MNL, NL, and interaction-based simulations.
 
 ### Numerical and Debugging Behavior
 
@@ -120,10 +118,11 @@ do not have a corresponding EET implementation because there are no utilities to
 For EET, only utility differences matter and therefore the choice between two utilities that are
 very small, say -10000 and -10001, are identical to a choice between 0 and 1. For MC, utilities
 have to be exponentiated and therefore floating point precision dictates the smallest and largest
-utility that can be used in practice. ActivitySim historically uses a utility of -999 to make
-alternatives practically unavailable. To keep consistent with this behaviour, EET also treats
-alternatives with utilities smaller or equal to -999 as unavailable, see
-`activitysim.core.logit.validate_utils`.
+utility that can be used in practice. ActivitySim models historically often use a utility of
+-999 to make alternatives practically unavailable. That value is below the utility threshold
+used in the probability-based path, which is about -691 because ActivitySim clips
+exponentiated utilities at 1e-300. To keep behavior consistent, EET treats alternatives with
+utilities at or below that threshold as unavailable; see `activitysim.core.logit.validate_utils`.
 
 ### Scale of the distribution
 Error terms are drawn from standard Gumbel distributions, i.e., the scale of the error term is
