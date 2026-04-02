@@ -96,14 +96,18 @@ also be obtained by using Monte Carlo simulation for the sampling part of locati
 
 (explicit_error_terms_memory)=
 ### Memory usage
-Another point to consider is memory usage during location sampling. For example, the MTC extended
-example model samples half of all zones for disaggregate accessibility settings which amounts to
-727 samples per chooser across 1454 alternatives. Due to the large memory footprint of all error
-terms for all choosers, for machines with limited memory it is likely that chunking will be needed.
-We recommend to use explicit chunking if possible, because the chunk size is set at the model
-level, but location sampling, location logsums, and location choice from the sampled choice set
-all have very different chooser characteristics and using absolute values for the explicit chunk
-size would lead to a large number of chunks for the logsum calculations, which is relatively slow.
+
+EET in its current implementation also increase memory pressure during location sampling.
+During the sampling step, an array of size (number of choosers, number of alternatives,
+number of samples) is allocated for all random error terms. This can quickly become unwieldy
+for machines with limited memory and it is likely that chunking will be needed.
+
+When chunking is needed and explicit chunking is used, using fractional values for the chunk
+size rather than absolute numbers of choosers is often a better fit. This is because the individual
+steps of location choice models (location sampling, location logsums, and location choice from the
+sampled choice set) all have very different chooser characteristics, but the chunk size currently
+can only be set at the model level. Using absolute values for the explicit chunk size would lead to
+a large number of chunks for the logsum calculations, which is relatively slow.
 
 
 ## Implementation Details and Adding New Models
