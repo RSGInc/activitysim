@@ -323,6 +323,6 @@ choice models as well as disaggregate accessibilities):
     use_explicit_error_terms:
       sample: false
 
-If the user decides against this option, then another point to consider is memory usage during location sampling.
-We recommend using explicit chunking with fractional numbers in this case; see :ref:`explicit_error_terms_memory`
-for additional information.
+If you keep EET enabled for the sampling step, also consider memory usage during location sampling.
+In that case, explicit chunking with a fractional ``explicit_chunk`` setting is often the most
+practical approach; see :ref:`explicit_error_terms_memory` for details.
