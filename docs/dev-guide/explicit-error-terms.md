@@ -94,6 +94,18 @@ choice is currently handled. Runtime improvement work is under way, but large im
 also be obtained by using Monte Carlo simulation for the sampling part of location choice, see
 {ref}`explicit_error_terms_ways_to_run`.
 
+(explicit_error_terms_memory)=
+### Memory usage
+Another point to consider is memory usage during location sampling. For example, the MTC extended
+example model samples half of all zones for disaggregate accessibility settings which amounts to
+727 samples per chooser across 1454 alternatives. Due to the large memory footprint of all error
+terms for all choosers, for machines with limited memory it is likely that chunking will be needed.
+We recommend to use explicit chunking if possible, because the chunk size is set at the model
+level, but location sampling, location logsums, and location choice from the sampled choice set
+all have very different chooser characteristics and using absolute values for the explicit chunk
+size would lead to a large number of chunks for the logsum calculations, which is relatively slow.
+
+
 ## Implementation Details and Adding New Models
 
 The core simulation is implemented in `activitysim.core.logit.make_choices_utility_based`. Most
