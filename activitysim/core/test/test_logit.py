@@ -697,15 +697,6 @@ def test_interaction_dataset_no_sample(interaction_choosers, interaction_alts):
 
 
 def test_interaction_dataset_sampled(interaction_choosers, interaction_alts):
-    class DummyRNG:
-        def choice_for_df(self, df, a, size, replace=False):
-            return np.array([2, 3, 0, 2, 3, 0, 1, 0])
-
-    class DummyState:
-        @staticmethod
-        def get_rn_generator():
-            return DummyRNG()
-
     expected = pd.DataFrame(
         {
             "attr": ["a"] * 2 + ["b"] * 2 + ["c"] * 2 + ["b"] * 2,
@@ -715,7 +706,7 @@ def test_interaction_dataset_sampled(interaction_choosers, interaction_alts):
     )
 
     interacted = logit.interaction_dataset(
-        DummyState(),
+        workflow.State().default_settings(),
         interaction_choosers,
         interaction_alts,
         sample_size=2,
