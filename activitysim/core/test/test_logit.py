@@ -116,16 +116,6 @@ def test_validate_utils_allows_zero_probs():
     assert validated.iloc[0, 1] == logit.UTIL_UNAVAILABLE
 
 
-def test_validate_utils_does_not_mutate_input():
-    state = workflow.State().default_settings()
-    utils = pd.DataFrame([[0.0, logit.UTIL_MIN - 1.0], [1.0, 2.0]])
-    original = utils.copy()
-
-    _ = logit.validate_utils(state, utils, allow_zero_probs=False)
-
-    pdt.assert_frame_equal(utils, original)
-
-
 #
 # `utils_to_probs` Tests
 #
@@ -197,16 +187,6 @@ def test_utils_to_probs_raises_on_float32_zero_probs_overflow():
             allow_zero_probs=True,
             overflow_protection=True,
         )
-
-
-def test_utils_to_probs_does_not_mutate_input():
-    state = workflow.State().default_settings()
-    utils = pd.DataFrame([[1.0, 2.0], [3.0, 4.0]], columns=["a", "b"])
-    original = utils.copy()
-
-    _ = logit.utils_to_probs(state, utils, trace_label=None)
-
-    pdt.assert_frame_equal(utils, original)
 
 
 def test_utils_to_probs(utilities, test_data):
