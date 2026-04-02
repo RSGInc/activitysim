@@ -290,7 +290,7 @@ Explicit Error Terms
 ____________________
 
 ActivitySim makes heavy use of micro-simulation. Most model components are discrete choice models with an inherent
-random component, and each for each choice situation a single outcome is generated.
+random component, and for each choice situation a single outcome is generated.
 With the default Monte Carlo draw method, ActivitySim first calculates analytical probabilities from the
 systematic utilities of a multinomial or nested logit model and then makes one draw from the
 cumulative distribution for each chooser. Explicit Error Terms (EET) replaces that final draw with a direct
@@ -324,7 +324,7 @@ following line to the location choice model settings:
     use_explicit_error_terms:
       sample: false
 
-This applies to all models where location choice sampling is applied, e.g., school and workplace location choice and
-disaggregate accessibilities.
+This can be applied to all models where location choice sampling is used, which currently includesall location
+and destination choice models as well as disaggregate accessibilities).
 
 For more details see :doc:`/dev-guide/explicit-error-terms`.
