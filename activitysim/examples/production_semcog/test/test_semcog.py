@@ -21,7 +21,10 @@ def run_test_semcog(multiprocess=False, use_explicit_error_terms=False):
 
     def regress(use_explicit_error_terms=False):
         regress_trips_df = pd.read_csv(
-            test_path(f"regress/final{'_eet' if use_explicit_error_terms else ''}_trips.csv"), dtype={"depart": int}
+            test_path(
+                f"regress/final{'_eet' if use_explicit_error_terms else ''}_trips.csv"
+            ),
+            dtype={"depart": int},
         )
         final_trips_df = pd.read_csv(
             test_path("output/final_trips.csv"), dtype={"depart": int}
