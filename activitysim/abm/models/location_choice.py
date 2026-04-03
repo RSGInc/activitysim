@@ -1040,7 +1040,8 @@ def iterate_location_choice(
             logger.debug(
                 f"{trace_label} resetting random number generator offsets for iteration {iteration}"
             )
-            state.get_rn_generator().reset_offsets_for_step(state.current_model_name)
+            # handle MP by only resetting offsets for all persons in this process.
+            state.get_rn_generator().reset_offsets_for_df(persons_merged_df)
 
         choices_df_, save_sample_df = run_location_choice(
             state,
