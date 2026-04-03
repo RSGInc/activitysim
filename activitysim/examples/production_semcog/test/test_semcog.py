@@ -99,15 +99,12 @@ def test_semcog_eet():
     run_test_semcog(multiprocess=False, use_explicit_error_terms=True)
 
 
-# TODO: currently running into problems some trips, looks like
-# trip_purpose_and_destination, might need to look into resetting
-# RNGs there. Leaving this test disabled for now.
-# def test_semcog_mp_eet():
-#     run_test_semcog(multiprocess=True, use_explicit_error_terms=True)
+def test_semcog_mp_eet():
+    run_test_semcog(multiprocess=True, use_explicit_error_terms=True)
 
 
 if __name__ == "__main__":
     run_test_semcog(multiprocess=False)
     run_test_semcog(multiprocess=True)
     run_test_semcog(multiprocess=False, use_explicit_error_terms=True)
-    # run_test_semcog(multiprocess=True, use_explicit_error_terms=True)
+    run_test_semcog(multiprocess=True, use_explicit_error_terms=True)
