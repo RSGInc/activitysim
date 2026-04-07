@@ -45,18 +45,34 @@ def run_test(zone, multiprocess=False, use_explicit_error_terms=False):
 
     def regress(zone, use_explicit_error_terms=False):
         # regress tours
-        regress_tours_df = pd.read_csv(test_path(f"regress/final{'_eet' if use_explicit_error_terms else ''}_tours_{zone}_zone.csv"))
+        regress_tours_df = pd.read_csv(
+            test_path(
+                f"regress/final{'_eet' if use_explicit_error_terms else ''}_tours_{zone}_zone.csv"
+            )
+        )
         tours_df = pd.read_csv(test_path("output/final_tours.csv"))
-        tours_df.to_csv(test_path(f"regress/final_tours_{zone}_zone_last_run.csv"), index=False)
+        tours_df.to_csv(
+            test_path(f"regress/final_tours_{zone}_zone_last_run.csv"), index=False
+        )
         print("regress tours")
-        test.assert_frame_substantively_equal(tours_df, regress_tours_df, rtol=1e-03, check_dtype=False)
+        test.assert_frame_substantively_equal(
+            tours_df, regress_tours_df, rtol=1e-03, check_dtype=False
+        )
 
         # regress trips
-        regress_trips_df = pd.read_csv(test_path(f"regress/final{'_eet' if use_explicit_error_terms else ''}_trips_{zone}_zone.csv"))
+        regress_trips_df = pd.read_csv(
+            test_path(
+                f"regress/final{'_eet' if use_explicit_error_terms else ''}_trips_{zone}_zone.csv"
+            )
+        )
         trips_df = pd.read_csv(test_path("output/final_trips.csv"))
-        trips_df.to_csv(test_path(f"regress/final_trips_{zone}_zone_last_run.csv"), index=False)
+        trips_df.to_csv(
+            test_path(f"regress/final_trips_{zone}_zone_last_run.csv"), index=False
+        )
         print("regress trips")
-        test.assert_frame_substantively_equal(trips_df, regress_trips_df, rtol=1e-03, check_dtype=False)
+        test.assert_frame_substantively_equal(
+            trips_df, regress_trips_df, rtol=1e-03, check_dtype=False
+        )
 
     file_path = os.path.join(os.path.dirname(__file__), "simulation.py")
 
@@ -162,8 +178,6 @@ EXPECTED_MODELS = [
 def test_multizone_progressive(zone="2"):
     zone = str(zone)
 
-    import activitysim.abm  # register components
-
     def test_path(dirname):
         return os.path.join(os.path.dirname(__file__), dirname)
 
@@ -188,7 +202,9 @@ def test_multizone_progressive(zone="2"):
     assert state.settings.sharrow == False
 
     state.settings.trace_hh_id = 1099626
-    state.tracing.validation_directory = Path(__file__).parent / "reference_trace_2_zone"
+    state.tracing.validation_directory = (
+        Path(__file__).parent / "reference_trace_2_zone"
+    )
 
     for step_name in EXPECTED_MODELS:
         state.run.by_name(step_name)
