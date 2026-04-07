@@ -39,40 +39,36 @@ def data():
     build_data()
 
 
-def run_test(zone, multiprocess=False):
+def run_test(zone, multiprocess=False, use_explicit_error_terms=False):
     def test_path(dirname):
         return os.path.join(os.path.dirname(__file__), dirname)
 
-    def regress(zone):
+    def regress(zone, use_explicit_error_terms=False):
         # regress tours
-        regress_tours_df = pd.read_csv(
-            test_path(f"regress/final_tours_{zone}_zone.csv")
-        )
+        regress_tours_df = pd.read_csv(test_path(f"regress/final{'_eet' if use_explicit_error_terms else ''}_tours_{zone}_zone.csv"))
         tours_df = pd.read_csv(test_path("output/final_tours.csv"))
-        tours_df.to_csv(
-            test_path(f"regress/final_tours_{zone}_zone_last_run.csv"), index=False
-        )
+        tours_df.to_csv(test_path(f"regress/final_tours_{zone}_zone_last_run.csv"), index=False)
         print("regress tours")
-        test.assert_frame_substantively_equal(
-            tours_df, regress_tours_df, rtol=1e-03, check_dtype=False
-        )
+        test.assert_frame_substantively_equal(tours_df, regress_tours_df, rtol=1e-03, check_dtype=False)
 
         # regress trips
-        regress_trips_df = pd.read_csv(
-            test_path(f"regress/final_trips_{zone}_zone.csv")
-        )
+        regress_trips_df = pd.read_csv(test_path(f"regress/final{'_eet' if use_explicit_error_terms else ''}_trips_{zone}_zone.csv"))
         trips_df = pd.read_csv(test_path("output/final_trips.csv"))
-        trips_df.to_csv(
-            test_path(f"regress/final_trips_{zone}_zone_last_run.csv"), index=False
-        )
+        trips_df.to_csv(test_path(f"regress/final_trips_{zone}_zone_last_run.csv"), index=False)
         print("regress trips")
-        test.assert_frame_substantively_equal(
-            trips_df, regress_trips_df, rtol=1e-03, check_dtype=False
-        )
+        test.assert_frame_substantively_equal(trips_df, regress_trips_df, rtol=1e-03, check_dtype=False)
 
     file_path = os.path.join(os.path.dirname(__file__), "simulation.py")
 
+    test_config_files = []
+    if use_explicit_error_terms:
+        test_config_files = [
+            "-c",
+            test_path("configs_eet"),
+        ]
+
     run_args = [
+        *test_config_files,
         "-c",
         test_path(f"configs_{zone}_zone"),
         "-c",
@@ -95,7 +91,7 @@ def run_test(zone, multiprocess=False):
     else:
         subprocess.run([sys.executable, file_path] + run_args, check=True)
 
-    regress(zone)
+    regress(zone, use_explicit_error_terms=use_explicit_error_terms)
 
 
 def test_2_zone(data):
@@ -104,6 +100,14 @@ def test_2_zone(data):
 
 def test_2_zone_mp(data):
     run_test(zone="2", multiprocess=True)
+
+
+def test_2_zone_eet(data):
+    run_test(zone="2", multiprocess=False, use_explicit_error_terms=True)
+
+
+def test_2_zone_mp_eet(data):
+    run_test(zone="2", multiprocess=True, use_explicit_error_terms=True)
 
 
 def test_3_zone(data):
@@ -184,9 +188,7 @@ def test_multizone_progressive(zone="2"):
     assert state.settings.sharrow == False
 
     state.settings.trace_hh_id = 1099626
-    state.tracing.validation_directory = (
-        Path(__file__).parent / "reference_trace_2_zone"
-    )
+    state.tracing.validation_directory = Path(__file__).parent / "reference_trace_2_zone"
 
     for step_name in EXPECTED_MODELS:
         state.run.by_name(step_name)
@@ -204,8 +206,12 @@ def test_multizone_progressive(zone="2"):
 
 if __name__ == "__main__":
     build_data()
+
     run_test(zone="2", multiprocess=False)
     run_test(zone="2", multiprocess=True)
 
-    run_test(zone="3", multiprocess=False)
-    run_test(zone="3", multiprocess=True)
+    run_test(zone="2", multiprocess=False, use_explicit_error_terms=True)
+    run_test(zone="2", multiprocess=True, use_explicit_error_terms=True)
+
+    # run_test(zone="3", multiprocess=False)
+    # run_test(zone="3", multiprocess=True)
