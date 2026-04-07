@@ -231,5 +231,5 @@ if __name__ == "__main__":
     run_test(zone="2", multiprocess=False, use_explicit_error_terms=True)
     run_test(zone="2", multiprocess=True, use_explicit_error_terms=True)
 
-    # run_test(zone="3", multiprocess=False)
-    # run_test(zone="3", multiprocess=True)
+    run_test(zone="3", multiprocess=False)
+    run_test(zone="3", multiprocess=True)
