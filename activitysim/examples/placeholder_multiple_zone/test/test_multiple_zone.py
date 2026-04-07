@@ -178,6 +178,8 @@ EXPECTED_MODELS = [
 def test_multizone_progressive(zone="2"):
     zone = str(zone)
 
+    import activitysim.abm  # register components
+
     def test_path(dirname):
         return os.path.join(os.path.dirname(__file__), dirname)
 
