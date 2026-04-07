@@ -222,6 +222,45 @@ def test_multizone_progressive(zone="2"):
             print(f"> {zone} zone {step_name}: ok")
 
 
+@test.run_if_exists("reference_pipeline_2_zone_eet.zip")
+def test_multizone_progressive_eet():
+
+    import activitysim.abm  # register components
+
+    def test_path(dirname):
+        return os.path.join(os.path.dirname(__file__), dirname)
+
+    state = workflow.State.make_default(
+        configs_dir=(
+            test_path(f"configs_eet"),
+            test_path(f"configs_2_zone"),
+            example_path(f"configs_2_zone"),
+            mtc_example_path("configs"),
+        ),
+        data_dir=(example_path(f"data_2"),),
+        output_dir=test_path("output"),
+        settings_file_name="settings.yaml",
+    )
+
+    assert state.settings.models == EXPECTED_MODELS
+    assert state.settings.chunk_size == 0
+    assert state.settings.sharrow == False
+    assert state.settings.use_explicit_error_terms == True
+
+    for step_name in EXPECTED_MODELS:
+        state.run.by_name(step_name)
+        try:
+            state.checkpoint.check_against(
+                Path(__file__).parent.joinpath("reference_pipeline_2_zone_eet.zip"),
+                checkpoint_name=step_name,
+            )
+        except Exception:
+            print(f"> 2 zone eet {step_name}: ERROR")
+            raise
+        else:
+            print(f"> 2 zone {step_name}: ok")
+
+
 if __name__ == "__main__":
     build_data()
 
