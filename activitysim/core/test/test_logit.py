@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import os.path
+import re
 
 import numpy as np
 import pandas as pd
 import pandas.testing as pdt
 import pytest
 
-from activitysim.core import logit, simulate, workflow
+from activitysim.core import logit, random, simulate, workflow
 from activitysim.core.exceptions import InvalidTravelError
+from activitysim.core.logit import AltsContext, add_ev1_random
 from activitysim.core.simulate import eval_variables
 
 
@@ -442,7 +444,7 @@ def test_choose_from_tree_raises_on_missing_leaf():
 # EET Choice Behavior Tests
 #
 def test_make_choices_eet_mnl(monkeypatch):
-    def fake_add_ev1_random(_state, _df):
+    def fake_add_ev1_random(_state, _df, alt_info=None, alt_nrs_df=None):
         return pd.DataFrame(
             [[1.0, 3.0], [4.0, 2.0]],
             index=[100, 101],
@@ -461,7 +463,7 @@ def test_make_choices_eet_mnl(monkeypatch):
 
 
 def test_make_choices_eet_nl(monkeypatch):
-    def fake_add_ev1_random(_state, _df):
+    def fake_add_ev1_random(_state, _df, alt_info=None, alt_nrs_df=None):
         return pd.DataFrame(
             [[5.0, 1.0, 4.0, 2.0], [3.0, 4.0, 1.0, 2.0]],
             index=[10, 11],
@@ -496,7 +498,7 @@ def test_make_choices_eet_nl(monkeypatch):
 
 
 def test_make_choices_utility_based_sets_zero_rands(monkeypatch):
-    def fake_add_ev1_random(_state, df):
+    def fake_add_ev1_random(_state, df, alt_info=None, alt_nrs_df=None):
         return pd.DataFrame(
             [[2.0, 1.0], [0.5, 2.5]],
             index=df.index,
@@ -714,3 +716,72 @@ def test_interaction_dataset_sampled(interaction_choosers, interaction_alts):
 
     interacted, expected = interacted.align(expected, axis=1)
     pdt.assert_frame_equal(interacted, expected)
+
+
+def reset_step(state, name="test_step"):
+    state.get_rn_generator().end_step(name)
+    state.get_rn_generator().begin_step(name)
+
+
+def test_make_choices_utility_based_sampled_alts():
+    """Test the situation of making choices from a sampled choice set"""
+    # TODO should these tests go in test_random?
+    state = workflow.State().default_settings()
+    # Make explicit that there's two indexing schemes - the raw alts, and the 0 based internals
+    utils_project_raw = pd.DataFrame(
+        {"a": 10.582999, "b": 10.680792, "c": 10.710443},
+        index=pd.Index([0], name="person_id"),
+    )
+    # zero based indexes
+    utils_project = utils_project_raw.rename(columns={"a": 0, "b": 1, "c": 2})
+    utils_base = utils_project_raw[["a", "c"]].rename(columns={"a": 0, "c": 1})
+
+    assert utils_project.index.name == "person_id"
+    state.get_rn_generator().add_channel("persons", utils_project)
+    state.get_rn_generator().begin_step("test_step")
+    # mock base case, where alt 1 is omitted (it was improved in the project)
+    # this situation is quite common with poisson sampling with a variable choice set size,
+    # but it can also happen in with-replacement EET sampling e.g. if alt 2 had a pick_count of 2 in the base case.
+    # In principle, it can also be problematic for non-sampled choices where there is a base project difference in the
+    # availability of alternatives .e.g a new mode was introduced in the project case
+
+    utils_project_with_rands = add_ev1_random(state, utils_project)
+    rands_project = utils_project_with_rands - utils_project
+    reset_step(state)
+    utils_base_with_rands = add_ev1_random(state, utils_base)
+    rands_base = utils_base_with_rands - utils_base
+    rands_base_labeled = rands_base.rename(columns={0: "a", 1: "c"})
+    rands_project_labeled = rands_project.rename(columns={0: "a", 1: "b", 2: "c"})
+    with pytest.raises(
+        AssertionError, match=re.escape('(column name="c") are different')
+    ):
+        # TODO this should pass
+        pdt.assert_frame_equal(
+            rands_base_labeled, rands_project_labeled.loc[:, rands_base_labeled.columns]
+        )
+    # document incorrect invariant - first two columns have the same random numbers:
+    pdt.assert_frame_equal(rands_base, rands_project.iloc[:, :2])
+
+    # revised approach
+    reset_step(state)
+    alt_nrs_df = pd.DataFrame({0: 0, 1: 1, 2: 2}, index=utils_project_raw.index)
+    alt_info = AltsContext.from_num_alts(3, zero_based=True)
+    utils_project_with_rands = add_ev1_random(
+        state, utils_project, alt_info=alt_info, alt_nrs_df=alt_nrs_df
+    )
+    rands_project = utils_project_with_rands - utils_project
+    reset_step(state)
+
+    # alt "b" is missing from the sampled choice set, alt_nrs_df is set to reflect that
+    alt_nrs_df = pd.DataFrame({0: 0, 1: 2}, index=utils_project_raw.index)
+    utils_base_with_rands = add_ev1_random(
+        state, utils_base, alt_info=alt_info, alt_nrs_df=alt_nrs_df
+    )
+    rands_base = utils_base_with_rands - utils_base
+    rands_base_labeled = rands_base.rename(columns={0: "a", 1: "c"})
+    rands_project_labeled = rands_project.rename(columns={0: "a", 1: "b", 2: "c"})
+
+    # Corrected invariant holds true
+    pdt.assert_frame_equal(
+        rands_base_labeled, rands_project_labeled.loc[:, rands_base_labeled.columns]
+    )
