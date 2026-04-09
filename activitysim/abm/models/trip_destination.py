@@ -1132,6 +1132,7 @@ def choose_trip_destination(
     alt_dest_col_name = model_settings.ALT_DEST_COL_NAME
     alts = alternatives.index
     assert alts.name == alt_dest_col_name
+    # use full index (including zero-size zones) to ensure stable random results
     alts_context = AltsContext.from_series(alts)
     destinations = trip_destination_simulate(
         state,

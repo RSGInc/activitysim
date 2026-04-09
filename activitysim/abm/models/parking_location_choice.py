@@ -214,9 +214,9 @@ def choose_parking_location(
     )
     destination_sample.index = np.repeat(trips.index.values, len(alternatives))
     destination_sample.index.name = trips.index.name
-    # using destination_sample would also be right because destination_sample isn't a sample here,
-    # but that could change
-    alts_context = AltsContext.from_series(alternatives[alt_dest_col_name])
+    # use full land_use index to ensure AltsContext spans full range of potential zones
+    land_use = state.get_dataframe("land_use")
+    alts_context = AltsContext.from_series(land_use.index)
 
     destinations = parking_destination_simulate(
         state,
