@@ -1,11 +1,14 @@
 # ActivitySim
 # See full license in LICENSE.txt.
 
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from activitysim.core import interaction_sample_simulate, workflow
+from activitysim.core.logit import AltsContext
 
 
 @pytest.fixture
@@ -75,6 +78,7 @@ def test_interaction_sample_simulate_parity(state):
         alternatives,
         spec,
         choice_column="tdd",
+        alts_context=AltsContext.from_num_alts(num_alts_per_chooser, zero_based=True),
     )
 
     assert len(choices_mnl) == num_choosers
@@ -140,6 +144,7 @@ def test_interaction_sample_simulate_eet_unavailable_alternatives(state):
         alternatives,
         spec,
         choice_column="tdd",
+        alts_context=AltsContext.from_num_alts(num_alts_per_chooser, zero_based=True),
     )
 
     assert len(choices_eet) == num_choosers
@@ -149,3 +154,104 @@ def test_interaction_sample_simulate_eet_unavailable_alternatives(state):
     # Choices should only be 0 or 1
     assert choices_eet.isin([0, 1]).all()
     assert not choices_eet.isin([2, 3, 4]).any()
+
+
+def test_interaction_sample_simulate_passes_alts_context_and_alt_nrs_df(
+    state, monkeypatch
+):
+    state.settings.use_explicit_error_terms = True
+
+    choosers = pd.DataFrame(
+        {"chooser_attr": [1.0, 1.0]},
+        index=pd.Index([100, 101], name="person_id"),
+    )
+    alternatives = pd.DataFrame(
+        {
+            "alt_attr": [1.0, 0.5, 0.8, 1.2],
+            "tdd": [0, 2, 0, 2],
+        },
+        index=pd.Index([100, 100, 101, 101], name="person_id"),
+    )
+    spec = pd.DataFrame(
+        {"coefficient": [1.0]},
+        index=pd.Index(["alt_attr"], name="Expression"),
+    )
+
+    captured = {}
+
+    def fake_make_choices_utility_based(
+        _state,
+        utilities,
+        name_mapping=None,
+        nest_spec=None,
+        trace_label=None,
+        trace_choosers=None,
+        allow_bad_utils=False,
+        alts_context=None,
+        alt_nrs_df=None,
+    ):
+        captured["alts_context"] = alts_context
+        captured["alt_nrs_df"] = alt_nrs_df.copy() if alt_nrs_df is not None else None
+        return pd.Series([0, 0], index=utilities.index), pd.Series(
+            np.zeros(len(utilities.index)), index=utilities.index
+        )
+
+    monkeypatch.setattr(
+        interaction_sample_simulate.logit,
+        "make_choices_utility_based",
+        fake_make_choices_utility_based,
+    )
+
+    state.rng().set_base_seed(42)
+    state.rng().add_channel("person_id", choosers)
+    state.rng().begin_step("test_step_alts_context_forwarding")
+
+    ctx = AltsContext.from_num_alts(3, zero_based=True)
+    choices = interaction_sample_simulate.interaction_sample_simulate(
+        state,
+        choosers,
+        alternatives,
+        spec,
+        choice_column="tdd",
+        alts_context=ctx,
+    )
+
+    assert len(choices) == len(choosers)
+    assert captured["alts_context"] == ctx
+    assert captured["alt_nrs_df"] is not None
+    expected_alt_nrs = pd.DataFrame(
+        [[0, 2], [0, 2]],
+        index=choosers.index,
+    )
+    pd.testing.assert_frame_equal(captured["alt_nrs_df"], expected_alt_nrs)
+
+
+def test_interaction_sample_simulate_requires_alts_context_for_eet_integer_choices(
+    state,
+):
+    state.settings.use_explicit_error_terms = True
+
+    choosers = pd.DataFrame(
+        {"chooser_attr": [1.0, 1.0]},
+        index=pd.Index([200, 201], name="person_id"),
+    )
+    alternatives = pd.DataFrame(
+        {
+            "alt_attr": [1.0, 0.5, 0.8, 1.2],
+            "tdd": [0, 2, 0, 2],
+        },
+        index=pd.Index([200, 200, 201, 201], name="person_id"),
+    )
+    spec = pd.DataFrame(
+        {"coefficient": [1.0]},
+        index=pd.Index(["alt_attr"], name="Expression"),
+    )
+
+    with pytest.raises(ValueError, match="alts_context is required"):
+        interaction_sample_simulate.interaction_sample_simulate(
+            state,
+            choosers,
+            alternatives,
+            spec,
+            choice_column="tdd",
+        )

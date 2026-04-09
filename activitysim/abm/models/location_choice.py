@@ -816,7 +816,6 @@ def run_location_choice(
             trace_label=tracing.extend_trace_label(
                 trace_label, "sample.%s" % segment_name
             ),
-            alts_context=alts_context,
         )
 
         # - location_logsums

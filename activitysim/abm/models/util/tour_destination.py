@@ -12,15 +12,16 @@ from activitysim.abm.tables.size_terms import tour_destination_size_terms
 from activitysim.core import (
     config,
     estimation,
+    expressions,
     los,
     simulate,
     tracing,
     workflow,
-    expressions,
 )
 from activitysim.core.configuration.logit import TourLocationComponentSettings
 from activitysim.core.interaction_sample import interaction_sample
 from activitysim.core.interaction_sample_simulate import interaction_sample_simulate
+from activitysim.core.logit import AltsContext
 from activitysim.core.util import reindex
 
 logger = logging.getLogger(__name__)
@@ -873,6 +874,7 @@ def run_destination_simulate(
     state.tracing.dump_df(DUMP, choosers, trace_label, "choosers")
 
     log_alt_losers = state.settings.log_alt_losers
+    alts_context = AltsContext.from_series(destination_size_terms.index)
 
     choices = interaction_sample_simulate(
         state,
@@ -891,6 +893,7 @@ def run_destination_simulate(
         estimator=estimator,
         skip_choice=skip_choice,
         compute_settings=model_settings.compute_settings,
+        alts_context=alts_context,
     )
 
     if not want_logsums:

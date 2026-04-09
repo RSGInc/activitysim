@@ -384,6 +384,30 @@ def test_add_ev1_random():
     )
 
 
+def test_add_ev1_random_requires_paired_alt_context_args():
+    class DummyRNG:
+        def gumbel_for_df(self, df, n):
+            return np.zeros((len(df), n))
+
+    class DummyState:
+        @staticmethod
+        def get_rn_generator():
+            return DummyRNG()
+
+    utilities = pd.DataFrame([[1.0, 2.0]], index=[1], columns=["a", "b"])
+
+    with pytest.raises(
+        AssertionError,
+        match="alt_info and alt_nrs_df must both be provided or omitted together",
+    ):
+        logit.add_ev1_random(
+            DummyState(),
+            utilities,
+            alt_info=AltsContext.from_num_alts(2),
+            alt_nrs_df=None,
+        )
+
+
 #
 # Nested Logit Structure Tests
 #
@@ -785,3 +809,30 @@ def test_make_choices_utility_based_sampled_alts():
     pdt.assert_frame_equal(
         rands_base_labeled, rands_project_labeled.loc[:, rands_base_labeled.columns]
     )
+
+
+def test_alts_context_from_series_and_properties():
+    ctx = AltsContext.from_series(pd.Index([3, 5, 9, 4]))
+
+    assert ctx.min_alt_id == 3
+    assert ctx.max_alt_id == 9
+    assert ctx.n_alts_to_cover_max_id == 10
+    assert ctx.n_rands_to_sample == 10
+
+
+@pytest.mark.parametrize(
+    "num_alts,zero_based,expected_min,expected_max,expected_n_cover",
+    [
+        (5, True, 0, 4, 5),
+        (5, False, 1, 5, 6),
+    ],
+)
+def test_alts_context_from_num_alts(
+    num_alts, zero_based, expected_min, expected_max, expected_n_cover
+):
+    ctx = AltsContext.from_num_alts(num_alts=num_alts, zero_based=zero_based)
+
+    assert ctx.min_alt_id == expected_min
+    assert ctx.max_alt_id == expected_max
+    assert ctx.n_alts_to_cover_max_id == expected_n_cover
+    assert ctx.n_rands_to_sample == expected_n_cover

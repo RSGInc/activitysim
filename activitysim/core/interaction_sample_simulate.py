@@ -222,9 +222,6 @@ def _interaction_sample_simulate(
     )
     chunk_sizer.log_df(trace_label, "interaction_utilities", interaction_utilities)
 
-    del interaction_df  # TODO-TS: this was deleted in M.Richards commit, relevant to altscontext or other?
-    chunk_sizer.log_df(trace_label, "interaction_df", None)
-
     if have_trace_targets:
         state.tracing.trace_interaction_eval_results(
             trace_eval_results,
@@ -268,10 +265,11 @@ def _interaction_sample_simulate(
     padded_utilities = np.insert(interaction_utilities.utility.values, inserts, -999)
     padded_alt_nrs = np.insert(interaction_df[choice_column], inserts, -999)
     chunk_sizer.log_df(trace_label, "padded_utilities", padded_utilities)
-    del inserts
 
-    del interaction_utilities
-    chunk_sizer.log_df(trace_label, "interaction_utilities", None)
+    del interaction_df  # TODO-TS: this was deleted in M.Richards commit, relevant to altscontext or other?
+    chunk_sizer.log_df(trace_label, "interaction_df", None)
+
+    del inserts
 
     # reshape to array with one row per chooser, one column per alternative
     padded_utilities = padded_utilities.reshape(-1, max_sample_count)
@@ -513,12 +511,12 @@ def interaction_sample_simulate(
     explicit_chunk_size : float, optional
         If > 0, specifies the chunk size to use when chunking the interaction
         simulation. If < 1, specifies the fraction of the total number of choosers.
-    alts_context: int, optional
-        The number of alternatives available in the choice set in the absense of sampling.
+    alts_context: AltsContext, optional
+        Representation of the full alternatives domain (min and max alternative id)
+        in the absence of sampling.
         This is used with EET simulation to ensure consistent random numbers across the whole alternative set
         ( as the sampled set may change between base and project). When not provided,
-        the fallback approach is used which may result in frozen error terms being applied to the wrong alternatives
-        if the choice set changes.
+        EET with integer-coded choice ids will raise an error.
 
     Returns
     -------
@@ -539,6 +537,18 @@ def interaction_sample_simulate(
 
     trace_label = tracing.extend_trace_label(trace_label, "interaction_sample_simulate")
     chunk_tag = chunk_tag or trace_label
+
+    if state.settings.use_explicit_error_terms:
+        choice_ids_are_int = pd.api.types.is_integer_dtype(alternatives[choice_column])
+        if alts_context is None and choice_ids_are_int:
+            raise ValueError(
+                "alts_context is required for interaction_sample_simulate when "
+                "use_explicit_error_terms is True and choice_column is integer-coded"
+            )
+        if alts_context is not None and not choice_ids_are_int:
+            raise ValueError(
+                "alts_context can only be used with integer-coded choice_column values"
+            )
 
     result_list = []
     for (
