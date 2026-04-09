@@ -1530,14 +1530,14 @@ def eval_nl(
             _resimulate_failed_choice_for_tracing(
                 state=state,
                 choosers=choosers,
-                spec=spec_sh,
+                spec=spec,
                 locals_d=locals_d,
                 log_alt_losers=log_alt_losers,
                 trace_label=trace_label,
                 have_trace_targets=have_trace_targets,
                 estimator=estimator,
                 trace_column_names=trace_column_names,
-                spec_sh=spec_sh,
+                spec_sh=spec,
                 chunk_sizer=chunk_sizer,
                 compute_settings=compute_settings,
             )
