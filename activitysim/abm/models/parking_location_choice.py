@@ -20,11 +20,11 @@ from activitysim.core import (
 )
 from activitysim.core.configuration.base import PreprocessorSettings
 from activitysim.core.configuration.logit import LogitComponentSettings
-from activitysim.core.exceptions import DuplicateWorkflowTableError
 from activitysim.core.interaction_sample_simulate import interaction_sample_simulate
 from activitysim.core.logit import AltsContext
 from activitysim.core.tracing import print_elapsed_time
 from activitysim.core.util import assign_in_place, drop_unused_columns
+from activitysim.core.exceptions import DuplicateWorkflowTableError
 
 logger = logging.getLogger(__name__)
 

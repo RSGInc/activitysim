@@ -12,11 +12,11 @@ from activitysim.abm.tables.size_terms import tour_destination_size_terms
 from activitysim.core import (
     config,
     estimation,
-    expressions,
     los,
     simulate,
     tracing,
     workflow,
+    expressions,
 )
 from activitysim.core.configuration.logit import TourLocationComponentSettings
 from activitysim.core.interaction_sample import interaction_sample
