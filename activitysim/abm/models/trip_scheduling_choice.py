@@ -84,7 +84,12 @@ def generate_schedule_alternatives(tours):
     schedules = pd.concat([no_stops, one_way, two_way], sort=True)
     schedules[SCHEDULE_ID] = np.arange(1, schedules.shape[0] + 1)
     # this sort is necessary to keep single process and multiprocess results the same!
+    # sort_values works here because the index is named "tour_id".
     schedules.sort_values(by=["tour_id", SCHEDULE_ID], inplace=True)
+    # Promote the named tour_id index to a plain column, then re-index by SCHEDULE_ID
+    # (drop=False keeps SCHEDULE_ID accessible as a column too).  Callers can then
+    # identify each alternative's tour via the "tour_id" column rather than the index.
+    schedules = schedules.reset_index().set_index(SCHEDULE_ID, drop=False)
 
     return schedules
 
@@ -270,6 +275,19 @@ def run_trip_scheduling_choice(
     indirect_tours = tours.loc[tours[HAS_OB_STOPS] | tours[HAS_IB_STOPS]]
 
     if len(indirect_tours) > 0:
+        # Generate all schedule alternatives upfront over the full indirect-tour set so
+        # that SCHEDULE_IDs are globally stable.  If we generated per-chunk instead, a
+        # tour's alternatives would receive different IDs depending on the other tours in
+        # its chunk, which would cause add_ev1_random to index into a different position
+        # in the dense Gumbel draw array and produce different (chunk-sensitive) error
+        # terms for the same tour.
+        all_schedules = generate_schedule_alternatives(indirect_tours)
+        # Build the AltsContext once from the global ID range so every chunk uses the
+        # same dense-random-draw width, giving each alternative a stable Gumbel draw.
+        global_alts_context = AltsContext(
+            all_schedules[SCHEDULE_ID].min(), all_schedules[SCHEDULE_ID].max()
+        )
+
         # Iterate through the chunks
         result_list = []
         for (
@@ -278,14 +296,22 @@ def run_trip_scheduling_choice(
             chunk_trace_label,
             chunk_sizer,
         ) in chunk.adaptive_chunked_choosers(state, indirect_tours, trace_label):
-            # Sort the choosers and get the schedule alternatives
+            # Sort the choosers and filter the pre-computed alternatives to this chunk.
             choosers = choosers.sort_index()
-            schedules = generate_schedule_alternatives(choosers).sort_index()
+            schedules = all_schedules[
+                all_schedules["tour_id"].isin(choosers.index)
+            ].sort_index()
+
+            # _interaction_sample_simulate requires alternatives indexed by chooser
+            # (tour_id), so create a view with tour_id as the index.
+            schedules_for_sim = (
+                schedules.reset_index(drop=True).set_index("tour_id").sort_index()
+            )
 
             # preprocessing alternatives
             expressions.annotate_preprocessors(
                 state,
-                df=schedules,
+                df=schedules_for_sim,
                 locals_dict=locals_dict,
                 skims=None,
                 model_settings=model_settings,
@@ -295,13 +321,13 @@ def run_trip_scheduling_choice(
 
             # Assuming we did the max_alt_size calculation correctly,
             # we should get the same sizes here.
-            assert choosers[NUM_ALTERNATIVES].sum() == schedules.shape[0]
+            assert choosers[NUM_ALTERNATIVES].sum() == schedules_for_sim.shape[0]
 
             # Run the simulation
             choices = _interaction_sample_simulate(
                 state,
                 choosers=choosers,
-                alternatives=schedules,
+                alternatives=schedules_for_sim,
                 spec=spec,
                 choice_column=SCHEDULE_ID,
                 allow_zero_probs=False,
@@ -315,14 +341,14 @@ def run_trip_scheduling_choice(
                 estimator=None,
                 chunk_sizer=chunk_sizer,
                 compute_settings=model_settings.compute_settings,
-                alts_context=AltsContext(
-                    schedules[SCHEDULE_ID].min(), schedules[SCHEDULE_ID].max()
-                ),
+                alts_context=global_alts_context,
             )
 
             assert len(choices.index) == len(choosers.index)
 
-            choices = schedules[schedules[SCHEDULE_ID].isin(choices)]
+            # choices is a Series of chosen SCHEDULE_IDs; look them up against the
+            # SCHEDULE_ID-indexed schedules to retrieve the duration columns.
+            choices = schedules.loc[schedules[SCHEDULE_ID].isin(choices)]
 
             result_list.append(choices)
 
@@ -337,8 +363,11 @@ def run_trip_scheduling_choice(
         assert len(choices.index) == len(indirect_tours.index)
 
         # The choices here are only the indirect tours, so the durations
-        # need to be updated on the main tour dataframe.
-        tours.update(choices[[MAIN_LEG_DURATION, OB_DURATION, IB_DURATION]])
+        # need to be updated on the main tour dataframe. Re-index by tour_id
+        # (stored as a column by generate_schedule_alternatives) for alignment.
+        tours.update(
+            choices.set_index("tour_id")[[MAIN_LEG_DURATION, OB_DURATION, IB_DURATION]]
+        )
 
     # Cleanup data types and drop temporary columns
     tours[[MAIN_LEG_DURATION, OB_DURATION, IB_DURATION]] = tours[

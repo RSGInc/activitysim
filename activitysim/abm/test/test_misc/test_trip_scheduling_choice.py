@@ -1,9 +1,11 @@
-import numpy as np
-import pandas as pd
-import pytest
+from __future__ import annotations
+
 import os
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
+import pytest
 
 from activitysim.abm.models import trip_scheduling_choice as tsc
 from activitysim.abm.tables.skims import skim_dict
@@ -150,7 +152,9 @@ def initialize_network_los() -> bool:
 def test_generate_schedule_alternatives(tours):
     windows = tsc.generate_schedule_alternatives(tours)
     assert windows.shape[0] == 296
-    assert windows.shape[1] == 4
+    assert (
+        windows.shape[1] == 5
+    )  # tour_id, schedule_id, main_leg_duration, ob_duration, ib_duration
 
     output_columns = [
         tsc.SCHEDULE_ID,
