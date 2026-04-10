@@ -141,6 +141,7 @@ jobs:
       matrix:
         region:
           - prototype_mtc
+          - prototype_arc
           - placeholder_psrc
           - prototype_marin
           - prototype_mtc_extended
