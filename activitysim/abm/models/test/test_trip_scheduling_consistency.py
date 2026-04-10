@@ -1,7 +1,6 @@
 """
 Tests confirming the SCHEDULE_ID in run_trip_scheduling_choice is not chunk-sensitive.
 """
-from __future__ import annotations
 
 import numpy as np
 import pandas as pd

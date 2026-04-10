@@ -30,13 +30,13 @@ from activitysim.core import (
 )
 from activitysim.core.configuration.base import PreprocessorSettings
 from activitysim.core.configuration.logit import LocationComponentSettings
-from activitysim.core.exceptions import DuplicateWorkflowTableError, InvalidTravelError
 from activitysim.core.interaction_sample import interaction_sample
 from activitysim.core.interaction_sample_simulate import interaction_sample_simulate
 from activitysim.core.logit import AltsContext
 from activitysim.core.skim_dictionary import DataFrameMatrix
 from activitysim.core.tracing import print_elapsed_time
 from activitysim.core.util import assign_in_place, reindex
+from activitysim.core.exceptions import InvalidTravelError, DuplicateWorkflowTableError
 
 logger = logging.getLogger(__name__)
 
@@ -1083,6 +1083,11 @@ def choose_trip_destination(
 
     t0 = print_elapsed_time()
 
+    # use full index (including zero-size zones) to ensure stable random results
+    # fetch alts_context early so we don't worry about mutating alternatives first
+    alts_context = AltsContext.from_series(alternatives.index)
+
+
     # - trip_destination_sample
     destination_sample = trip_destination_sample(
         state,
@@ -1129,11 +1134,6 @@ def choose_trip_destination(
         destination_sample["dp_logsum"] = 0.0
 
     t0 = print_elapsed_time("%s.compute_logsums" % trace_label, t0, debug=True)
-    alt_dest_col_name = model_settings.ALT_DEST_COL_NAME
-    alts = alternatives.index
-    assert alts.name == alt_dest_col_name
-    # use full index (including zero-size zones) to ensure stable random results
-    alts_context = AltsContext.from_series(alts)
     destinations = trip_destination_simulate(
         state,
         primary_purpose=primary_purpose,
@@ -1528,13 +1528,13 @@ def run_trip_destination(
                             """
 
                         When using the trip destination model with sharrow, it is necessary
-                        to set a value for `purpose_index_num` in the trip destination
-                        annotate trips preprocessor.  This allows for an optimized compiled
+                        to set a value for `purpose_index_num` in the trip destination 
+                        annotate trips preprocessor.  This allows for an optimized compiled 
                         lookup of the size term from the array of size terms.  The value of
-                        `purpose_index_num` should be the integer column position in the size
-                        matrix, with usual zero-based numpy indexing semantics (i.e. the first
+                        `purpose_index_num` should be the integer column position in the size 
+                        matrix, with usual zero-based numpy indexing semantics (i.e. the first 
                         column is zero).  The preprocessor expression most likely needs to be
-                        "size_terms.get_cols(df.purpose)" unless some unusual transform of
+                        "size_terms.get_cols(df.purpose)" unless some unusual transform of 
                         size terms has been employed.
 
                         """

@@ -9,9 +9,9 @@ import pandas as pd
 
 from activitysim.core import chunk, interaction_simulate, logit, tracing, util, workflow
 from activitysim.core.configuration.base import ComputeSettings
+from activitysim.core.simulate import set_skim_wrapper_targets
 from activitysim.core.exceptions import SegmentedSpecificationError
 from activitysim.core.logit import AltsContext
-from activitysim.core.simulate import set_skim_wrapper_targets
 
 logger = logging.getLogger(__name__)
 
