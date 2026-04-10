@@ -794,12 +794,9 @@ def run_location_choice(
         if choosers.shape[0] == 0:
             logger.info(f"{trace_label} skipping segment {segment_name}: no choosers")
             continue
-        # using land use rather than size terms in case something goes 0 base -> nonzero project, double
-        # check if that would be in dest_size_terms as a zero
-        # use full index (including zero-size zones) to ensure stable random results
+        # dest_size_terms contains 0-attraction zones so using this directly here, important for stable error terms
+        # when a zone goes from 0 base -> nonzero project
         alts_context = AltsContext.from_series(dest_size_terms.index)
-        # assumes that dest_size_terms will always contain zeros for non-attractive zones, i.e. it will have the
-        # same length as land_use
 
         # - location_sample
         location_sample_df = run_location_sample(
