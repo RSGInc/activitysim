@@ -1087,7 +1087,6 @@ def choose_trip_destination(
     # fetch alts_context early so we don't worry about mutating alternatives first
     alts_context = AltsContext.from_series(alternatives.index)
 
-
     # - trip_destination_sample
     destination_sample = trip_destination_sample(
         state,
