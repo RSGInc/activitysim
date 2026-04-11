@@ -9,9 +9,9 @@ import pandas as pd
 
 from activitysim.core import chunk, interaction_simulate, logit, tracing, util, workflow
 from activitysim.core.configuration.base import ComputeSettings
-from activitysim.core.simulate import set_skim_wrapper_targets
 from activitysim.core.exceptions import SegmentedSpecificationError
 from activitysim.core.logit import AltsContext
+from activitysim.core.simulate import set_skim_wrapper_targets
 
 logger = logging.getLogger(__name__)
 
@@ -266,7 +266,7 @@ def _interaction_sample_simulate(
     padded_alt_nrs = np.insert(interaction_df[choice_column], inserts, -999)
     chunk_sizer.log_df(trace_label, "padded_utilities", padded_utilities)
 
-    del interaction_df  # TODO-TS: this was deleted in M.Richards commit, relevant to altscontext or other?
+    del interaction_df
     chunk_sizer.log_df(trace_label, "interaction_df", None)
 
     del inserts
