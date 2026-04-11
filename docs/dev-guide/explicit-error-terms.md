@@ -85,23 +85,64 @@ changing random draws between iterations.
 
 ### Runtime
 
-EET is slower than the default probability-based draw because it generates and processes
-one random error term per chooser-alternative pair, rather than one uniform draw per
-chooser after probabilities are computed. The exact runtime impact depends on the number
-of alternatives, nesting structure, and interaction size. Current runtime increases are on the
-order of 100% per demand model run, which is due to the non-optimized way in which location
-choice is currently handled. Runtime improvement work is under way, but large improvements can
-also be obtained by using Monte Carlo simulation for the sampling part of location choice, see
-{ref}`explicit_error_terms_ways_to_run`.
+Runtime differs between the methods. EET generates one EV1 error term per chooser-alternative
+pair, while the default Monte Carlo path draws only one uniform random number per chooser after
+probabilities are computed. EET, however, does not need to compute probabilities to make choices.
+
+Exact runtimes depend on the number of alternatives, nesting structure, interaction size, and
+sampling configuration. With default settings, current full-scale demand model runs with EET
+are about 100% higher than the default MC method. While the relative runtime increase
+of nested logit models is large, these typically contribute only a very small fraction to the
+overall runtime and virtually all of the increase is due to sampling in location choice. To
+avoid this penalty, it is possible to use MC for sampling only by adding the following to each
+model setting where sampling is used (currently all location and destination choice models as
+well as disaggregate accessibilities):
+
+```yaml
+compute_settings:
+  use_explicit_error_terms:
+    sample: false
+```
+
+With this setting, model runtimes should be roughly equal. The influence of this change on
+sampling noise is under investigation.
+
+(explicit_error_terms_zone_encoding)=
+#### Zone ID encoding and runtime
+
+For location choice models, encoding zone IDs as a 0-based contiguous index reduces EET runtime
+and memory use during sampling.
+
+The current implementation draws error terms into a dense 1-D array of length `max_zone_id + 1`
+per chooser (see `AltsContext.n_alts_to_cover_max_id` in `activitysim.core.logit`). Each sampled
+alternative is then looked up by direct offset into that array, so the same zone always receives
+the same error term regardless of which alternatives are in the sampled choice set — a property
+needed for consistent scenario comparisons.
+
+When zone IDs are a contiguous 0-based sequence, the dense array has exactly as many entries as
+there are zones and every draw is used. When zone IDs contain gaps or start from a large value,
+the array must still cover `max_zone_id + 1` entries, so the draws for the missing IDs are
+generated but never used. For zone systems with large or sparse IDs, this waste can be substantial.
+
+An alternative would be to draw only as many error terms as there are sampled alternatives and
+retrieve the relevant term for each zone via a lookup. That would avoid unused draws but adds an
+index-mapping step for every chooser-sample in the interaction frame, trading one form of overhead
+for another. The current design favours the dense approach because the direct-offset indexing is
+simpler and because the ``recode_columns`` setting can encode zone IDs as ``zero-based`` in
+the input table list; see the
+[Zero-based Recoding of Zones](using-sharrow.md#zero-based-recoding-of-zones) section for details.
 
 (explicit_error_terms_memory)=
 ### Memory usage
 
-EET in its current implementation also increases memory pressure during location sampling.
-During the sampling step, an array of size (number of choosers, number of alternatives,
-number of samples) is allocated for all random error terms. This can quickly become unwieldy
-for machines with limited memory, and [chunking](../users-guide/performance/chunking.md) will
-likely be needed.
+When running EET with MC for location sampling as described in the Runtime section above,
+there should be only a small increase in memory usage for location choice models compared to full
+MC simulation.
+
+However, when EET is run with its current default location sampling settings, an array of size
+(number of choosers, number of alternatives, number of samples) is allocated for all random error
+terms. This can quickly become unwieldy for machines with limited memory, and
+[chunking](../users-guide/performance/chunking.md) will likely be needed.
 
 When chunking is needed and [explicit chunking](../users-guide/performance/chunking.md#explicit-chunking)
 is used, using fractional values for the chunk size rather than absolute numbers of choosers is
@@ -122,19 +163,19 @@ calls to this function are wrapped in one of the following methods:
 - `activitysim.core.interaction_sample`
 - `activitysim.core.interaction_sample_simulate`
 
-These methods have consistent implementations of EET and therefore any model using these will
-automatically have EET implemented. Some models call the underlying choice simulation method
-`activitysim.core.logit.make_choices` directly. For EET to work in that case, the developer has
-to add a corresponding call to `logit.make_choices_utility_based`, see, e.g.,
-`activitysim.abm.models.utils.cdap.household_activity_choices`. Note models that draw directly
-from probability distributions, like `activitysim.abm.models.utils.cdap.extra_hh_member_choices`
+These wrappers all implement EET consistently, so any model using them will automatically support
+EET. Some models call the underlying choice simulation method
+`activitysim.core.logit.make_choices` directly. For EET to work in that case, the developer must
+add a corresponding call to `logit.make_choices_utility_based`; see for example
+`activitysim.abm.models.utils.cdap.household_activity_choices`. Models that draw directly
+from probability distributions, such as `activitysim.abm.models.utils.cdap.extra_hh_member_choices`,
 do not have a corresponding EET implementation because there are no utilities to work with.
 
 
 ### Unavailable choices utility convention
 
-For EET, only utility differences matter and therefore the choice between two utilities that are
-very small, say -10000 and -10001, are identical to a choice between 0 and 1. For MC, utilities
+For EET, only utility differences matter, and therefore the outcome for two utilities that are
+very small, say -10000 and -10001, is identical to the outcome for 0 and 1. For MC, utilities
 have to be exponentiated and therefore floating point precision dictates the smallest and largest
 utility that can be used in practice. ActivitySim models historically often use a utility of
 -999 to make alternatives practically unavailable. That value is below the utility threshold

@@ -18,6 +18,7 @@ from activitysim.core.configuration.logit import (
 from activitysim.core.exceptions import DuplicateWorkflowTableError
 from activitysim.core.interaction_sample import interaction_sample
 from activitysim.core.interaction_sample_simulate import interaction_sample_simulate
+from activitysim.core.logit import AltsContext
 from activitysim.core.util import reindex
 
 """
@@ -603,6 +604,7 @@ def run_location_simulate(
     chunk_tag,
     trace_label,
     skip_choice=False,
+    alts_context: AltsContext | None = None,
 ):
     """
     run location model on location_sample annotated with mode_choice logsum
@@ -712,6 +714,7 @@ def run_location_simulate(
         compute_settings=model_settings.compute_settings.subcomponent_settings(
             "simulate"
         ),
+        alts_context=alts_context,
     )
 
     if not want_logsums:
@@ -737,6 +740,7 @@ def run_location_choice(
     chunk_tag,
     trace_label,
     skip_choice=False,
+    alts_context: AltsContext | None = None,
 ):
     """
     Run the three-part location choice algorithm to generate a location choice for each chooser
@@ -756,6 +760,8 @@ def run_location_choice(
     model_settings : dict
     chunk_size : int
     trace_label : str
+    skip_choice : bool
+    alts_context : AltsContext or None
 
     Returns
     -------
@@ -788,6 +794,9 @@ def run_location_choice(
         if choosers.shape[0] == 0:
             logger.info(f"{trace_label} skipping segment {segment_name}: no choosers")
             continue
+        # dest_size_terms contains 0-attraction zones so using this directly here, important for stable error terms
+        # when a zone goes from 0 base -> nonzero project
+        alts_context = AltsContext.from_series(dest_size_terms.index)
 
         # - location_sample
         location_sample_df = run_location_sample(
@@ -841,6 +850,7 @@ def run_location_choice(
                 trace_label, "simulate.%s" % segment_name
             ),
             skip_choice=skip_choice,
+            alts_context=alts_context,
         )
 
         if estimator:
