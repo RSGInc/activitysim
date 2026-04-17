@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
 
-    <title>State.checkpoint.restore &#8212; ActivitySim</title>
+    <title>State.update_table &#8212; ActivitySim</title>
   
   
   
@@ -50,7 +50,7 @@
     <script src="../../_static/clipboard.min.js"></script>
     <script src="../../_static/copybutton.js"></script>
     <script src="../../_static/design-tabs.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'dev-guide/_generated/activitysim.core.workflow.State.checkpoint.restore';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'dev-guide/_generated/activitysim.core.workflow.State.update_table';</script>
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.16.1';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://rsginc.github.io/activitysim/switcher.json';
@@ -60,8 +60,8 @@
         </script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="State.checkpoint.restore_from" href="activitysim.core.workflow.State.checkpoint.restore_from.html" />
-    <link rel="prev" title="State.checkpoint.get_inventory" href="activitysim.core.workflow.State.checkpoint.get_inventory.html" />
+    <link rel="next" title="State.checkpoint" href="activitysim.core.workflow.State.checkpoint.html" />
+    <link rel="prev" title="State.uncheckpointed_table_names" href="activitysim.core.workflow.State.uncheckpointed_table_names.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="1.5.2" />
@@ -425,7 +425,10 @@
     
     <li class="breadcrumb-item"><a href="../core-workflow-api.html" class="nav-link">State API</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">State.checkpoint.restore</span></li>
+    
+    <li class="breadcrumb-item"><a href="activitysim.core.workflow.State.html" class="nav-link">State</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">State.update_table</span></li>
   </ul>
 </nav>
 </div>
@@ -442,27 +445,24 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="state-checkpoint-restore">
-<h1>State.checkpoint.restore<a class="headerlink" href="#state-checkpoint-restore" title="Permalink to this heading">#</a></h1>
+  <section id="state-update-table">
+<h1>State.update_table<a class="headerlink" href="#state-update-table" title="Permalink to this heading">#</a></h1>
 <dl class="py method">
-<dt class="sig sig-object py" id="activitysim.core.workflow.State.checkpoint.restore">
-<span class="sig-prename descclassname"><span class="pre">State.checkpoint.</span></span><span class="sig-name descname"><span class="pre">restore</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">resume_after</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'a'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#activitysim.core.workflow.State.checkpoint.restore" title="Permalink to this definition">#</a></dt>
-<dd><p>Restore state from checkpoints.</p>
-<p>This can be used with “resume_after” to get the correct checkpoint,
-or for a new run.</p>
-<p>If resume_after, then we expect the pipeline hdf5 file to exist and contain
-checkpoints from a previous run, including a checkpoint with name specified in resume_after</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><dl class="simple">
-<dt><strong>resume_after</strong><span class="classifier">str or None</span></dt><dd><p>name of checkpoint to load from pipeline store</p>
-</dd>
-<dt><strong>mode</strong><span class="classifier">{‘a’, ‘w’, ‘r’, ‘r+’}, default ‘a’</span></dt><dd><p>same as for typical opening of H5Store.  Ignored unless resume_after
-is not None.  This is here to allow read-only pipeline for benchmarking.</p>
-</dd>
-</dl>
-</dd>
-</dl>
+<dt class="sig sig-object py" id="activitysim.core.workflow.State.update_table">
+<span class="sig-prename descclassname"><span class="pre">State.</span></span><span class="sig-name descname"><span class="pre">update_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#activitysim.core.workflow.State.update_table" title="Permalink to this definition">#</a></dt>
+<dd><p>Go through existing tables in the state and
+get rid of any rows that correspond to skipped households.
+Save skipped household records in state under households_skipped
+Parameters
+———-
+name : str, optional</p>
+<blockquote>
+<div><p>Name of table to update. If None, update all tables.</p>
+</div></blockquote>
+<section id="returns">
+<h2>Returns<a class="headerlink" href="#returns" title="Permalink to this heading">#</a></h2>
+<p>None</p>
+</section>
 </dd></dl>
 
 </section>
@@ -478,20 +478,20 @@ is not None.  This is here to allow read-only pipeline for benchmarking.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="activitysim.core.workflow.State.checkpoint.get_inventory.html"
+       href="activitysim.core.workflow.State.uncheckpointed_table_names.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">State.checkpoint.get_inventory</p>
+        <p class="prev-next-title">State.uncheckpointed_table_names</p>
       </div>
     </a>
     <a class="right-next"
-       href="activitysim.core.workflow.State.checkpoint.restore_from.html"
+       href="activitysim.core.workflow.State.checkpoint.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">State.checkpoint.restore_from</p>
+        <p class="prev-next-title">State.checkpoint</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -514,7 +514,7 @@ is not None.  This is here to allow read-only pipeline for benchmarking.</p>
   </div>
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#activitysim.core.workflow.State.checkpoint.restore"><code class="docutils literal notranslate"><span class="pre">State.checkpoint.restore()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#activitysim.core.workflow.State.update_table"><code class="docutils literal notranslate"><span class="pre">State.update_table()</span></code></a></li>
 </ul>
   </nav></div>
 
@@ -522,7 +522,7 @@ is not None.  This is here to allow read-only pipeline for benchmarking.</p>
   <div role="note" aria-label="source link">
     <h3>This Page</h3>
     <ul class="this-page-menu">
-      <li><a href="../../_sources/dev-guide/_generated/activitysim.core.workflow.State.checkpoint.restore.rst.txt"
+      <li><a href="../../_sources/dev-guide/_generated/activitysim.core.workflow.State.update_table.rst.txt"
             rel="nofollow">Show Source</a></li>
     </ul>
    </div></div>
