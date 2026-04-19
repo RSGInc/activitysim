@@ -21,6 +21,7 @@ from activitysim.core import (
 from activitysim.core.configuration.logit import TourLocationComponentSettings
 from activitysim.core.interaction_sample import interaction_sample
 from activitysim.core.interaction_sample_simulate import interaction_sample_simulate
+from activitysim.core.logit import AltsContext
 from activitysim.core.util import reindex
 
 logger = logging.getLogger(__name__)
@@ -883,6 +884,10 @@ def run_destination_simulate(
     state.tracing.dump_df(DUMP, choosers, trace_label, "choosers")
 
     log_alt_losers = state.settings.log_alt_losers
+    # use full land_use index to ensure AltsContext spans full range of potential destinations
+    # (maintains stable random number generation even if zones flip zero/non-zero size)
+    land_use = state.get_dataframe("land_use")
+    alts_context = AltsContext.from_series(land_use.index)
 
     choices = interaction_sample_simulate(
         state,
@@ -901,6 +906,7 @@ def run_destination_simulate(
         estimator=estimator,
         skip_choice=skip_choice,
         compute_settings=model_settings.compute_settings,
+        alts_context=alts_context,
     )
 
     if not want_logsums:

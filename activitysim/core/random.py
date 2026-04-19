@@ -9,8 +9,8 @@ from builtins import object, range
 import numpy as np
 import pandas as pd
 
-from activitysim.core.util import reindex
 from activitysim.core.exceptions import DuplicateLoadableObjectError, TableIndexError
+from activitysim.core.util import reindex
 
 from .tracing import print_elapsed_time
 
@@ -445,7 +445,38 @@ class Random(object):
             raise TableIndexError("No channel with index name '%s'" % df.index.name)
         return self.channels[channel_name]
 
-    # step handling
+    def reset_offsets_for_step(self, step_name):
+        """
+        Reset offsets for all channels for a step
+
+        Parameters
+        ----------
+        step_name : str
+            pipeline step name for this step
+        """
+
+        assert self.step_name == step_name
+
+        for c in self.channels:
+            self.channels[c].row_states["offset"] = 0
+
+    def reset_offsets_for_df(self, df):
+        """
+        Reset offsets for all choosers in df if the channel for a step
+
+        Parameters
+        ----------
+        step_name : str
+            pipeline step name for this step
+        df : pandas.DataFrame
+            df with index name and values corresponding to a registered channel
+        """
+        channel = self.get_channel_for_df(df)
+        channel.row_states.loc[df.index, "offset"] = 0
+        logger.info(
+            f"RNG: resetting random number generator offsets for channel '{channel.channel_name}' for {len(df)} rows"
+            + f" with index name '{df.index.name}'. Total lenght df: {len(channel.row_states)}"
+        )
 
     def begin_step(self, step_name):
         """

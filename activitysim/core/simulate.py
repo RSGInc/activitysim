@@ -9,7 +9,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -31,7 +31,9 @@ from activitysim.core.configuration.logit import (
     LogitNestSpec,
     TemplatedLogitComponentSettings,
 )
-from activitysim.core.estimation import Estimator
+
+if TYPE_CHECKING:
+    from activitysim.core.estimation import Estimator
 from activitysim.core.fast_eval import fast_eval
 from activitysim.core.simulate_consts import (
     ALT_LOSER_UTIL,
@@ -1513,7 +1515,6 @@ def eval_nl(
         )
 
     if state.settings.use_explicit_error_terms:
-        # TODO-EET: Nested utility zero choice probability
         raw_utilities = logit.validate_utils(
             state, raw_utilities, allow_zero_probs=True, trace_label=trace_label
         )
@@ -1522,21 +1523,13 @@ def eval_nl(
         nested_utilities = compute_nested_utilities(raw_utilities, nest_spec)
         chunk_sizer.log_df(trace_label, "nested_utilities", nested_utilities)
 
-        # TODO-EET: use nested_utiltites directly to compute logsums?
         if want_logsums:
-            # logsum of nest root
-            # exponentiated utilities of leaves and nests
-            nested_exp_utilities = compute_nested_exp_utilities(
-                raw_utilities, nest_spec
-            )
-            chunk_sizer.log_df(
-                trace_label, "nested_exp_utilities", nested_exp_utilities
-            )
-            logsums = pd.Series(np.log(nested_exp_utilities.root), index=choosers.index)
+            logsums = pd.Series(nested_utilities.root, index=choosers.index)
             chunk_sizer.log_df(trace_label, "logsums", logsums)
 
-        # TODO-EET: index of choices for nested utilities is different than unnested - this needs to be consistent for
-        #  turning indexes into alternative names to keep code changes to minimum for now
+        # Index of choices for nested utilities is different than unnested - this needs to be consistent for
+        # turning indexes into alternative names to keep code changes to minimum for now. Might want to look
+        # into changing this in the future when revisiting nested logit EET code.
         name_mapping = raw_utilities.columns.values
 
         del raw_utilities
