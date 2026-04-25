@@ -6,7 +6,6 @@ import hashlib
 import math
 import time
 import tracemalloc
-from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -17,66 +16,193 @@ _MAX_SEED = 1 << 32
 _SEED_MASK = 0xFFFFFFFF
 
 
+WORKFLOW_DEFS = {
+    "prob_sample_maz_prob_choice": {
+        "sample_method": "prob",
+        "final_method": "prob",
+        "label": "prob sample + MAZ + prob choice",
+    },
+    "utility_sample_maz_prob_choice": {
+        "sample_method": "utility",
+        "final_method": "prob",
+        "label": "utility sample + MAZ + prob choice",
+    },
+    "utility_sample_maz_dense_eet": {
+        "sample_method": "utility",
+        "final_method": "dense_eet",
+        "label": "utility sample + MAZ + dense EET",
+    },
+}
+
+
 RUN_SETTINGS = {
-    # Switch between benchmark profiles: "fast" or "full".
     "run_profile": "fast",
-    # Run mode: "benchmark", "seed_unit_test", or "both".
     "run_mode": "both",
-    # Global controls
-    "repeat": 5,
-    "candidates": "all",  # or list like ["RandomState", "GeneratorPCG64"]
+    "repeat": 3,
+    "candidates": "all",
     "csv": "output/benchmark_rng_results.csv",
     "run_repro_check": True,
     "run_quality_check": True,
+    "run_workflow_check": True,
     "quality_sample": 100000,
-    # Plot controls
     "plots": {
         "enabled": True,
         "output_dir": "output",
         "metric": "mean_seconds",
+    },
+    "destination_choice": {
+        "workflow_variants": list(WORKFLOW_DEFS.keys()),
+        "draw_structures": ["batched", "serial", "ragged"],
+        "maz_shape": "uniform",
+        "serial_dense_eet_block": 128,
+        "chooser_sweep": {
+            "enabled": True,
+            "chooser_counts": [250, 1000],
+            "taz_count": 128,
+            "sample_size": 12,
+            "max_maz_count": 24,
+            "dense_alt_count": 4096,
+        },
+        "sample_sweep": {
+            "enabled": True,
+            "chooser_count": 1000,
+            "taz_count": 128,
+            "sample_sizes": [8, 12, 20],
+            "max_maz_count": 24,
+            "dense_alt_count": 4096,
+        },
+        "maz_sweep": {
+            "enabled": True,
+            "chooser_count": 1000,
+            "taz_count": 128,
+            "sample_size": 12,
+            "max_maz_counts": [8, 16, 24],
+            "dense_alt_count": 4096,
+        },
     },
 }
 
 
 RUN_PROFILES = {
     "fast": {
-        "reseed_sweep": {
-            "reseeds": [1000, 10000, 50000],
-            "draws_per_reseed": 10,
-        },
-        "draw_sweep": {
-            "reseeds": 10000,
-            "draws_per_reseed": [1, 10, 100, 1000, 5000],
-        },
-        "repeat": 2,
+        "run_mode": "benchmark",
+        "repeat": 1,
         "run_repro_check": False,
         "run_quality_check": False,
-        "quality_sample": 10000,
+        "run_workflow_check": False,
+        "quality_sample": 5000,
+        "destination_choice": {
+            "workflow_variants": ["prob_sample_maz_prob_choice"],
+            "draw_structures": ["batched", "ragged"],
+            "serial_dense_eet_block": 128,
+            "chooser_sweep": {
+                "enabled": True,
+                "chooser_counts": [128, 256],
+                "taz_count": 48,
+                "sample_size": 4,
+                "max_maz_count": 6,
+                "dense_alt_count": 288,
+            },
+            "sample_sweep": {
+                "enabled": True,
+                "chooser_count": 256,
+                "taz_count": 48,
+                "sample_sizes": [4],
+                "max_maz_count": 6,
+                "dense_alt_count": 288,
+            },
+            "maz_sweep": {
+                "enabled": True,
+                "chooser_count": 256,
+                "taz_count": 48,
+                "sample_size": 4,
+                "max_maz_counts": [6],
+                "dense_alt_count": 288,
+            },
+        },
     },
     "full": {
-        "reseed_sweep": {
-            "reseeds": [1000, 10000, 100000, 500000],
-            "draws_per_reseed": 30,
-        },
-        "draw_sweep": {
-            "reseeds": 10000,
-            "draws_per_reseed": [1, 10, 100, 1000, 10000, 30000, 70000],
-        },
-        "repeat": 2,
+        "repeat": 3,
         "run_repro_check": True,
         "run_quality_check": True,
-        "quality_sample": 10000,
+        "quality_sample": 50000,
+        "destination_choice": {
+            "serial_dense_eet_block": 256,
+            "chooser_sweep": {
+                "chooser_counts": [500, 2000, 5000],
+                "taz_count": 256,
+                "sample_size": 16,
+                "max_maz_count": 32,
+                "dense_alt_count": 8192,
+            },
+            "sample_sweep": {
+                "chooser_count": 2000,
+                "taz_count": 256,
+                "sample_sizes": [8, 16, 24],
+                "max_maz_count": 32,
+                "dense_alt_count": 8192,
+            },
+            "maz_sweep": {
+                "chooser_count": 2000,
+                "taz_count": 256,
+                "sample_size": 16,
+                "max_maz_counts": [12, 24, 40],
+                "dense_alt_count": 8192,
+            },
+        },
     },
 }
+
+
+@dataclass(frozen=True)
+class DestinationChoiceSpec:
+    scenario: str
+    x_field: str
+    workflow: str
+    draw_structure: str
+    chooser_count: int
+    taz_count: int
+    sample_size: int
+    max_maz_count: int
+    dense_alt_count: int
+    maz_shape: str = "ragged"
+    serial_dense_eet_block: int = 128
+
+
+@dataclass
+class DestinationChoiceContext:
+    taz_prob_cdf: np.ndarray
+    taz_sample_utilities: np.ndarray
+    maz_counts: np.ndarray
+    maz_weights_padded: np.ndarray
+    maz_id_lookup: np.ndarray
+    maz_weight_lists: list[np.ndarray]
+    maz_id_lists: list[np.ndarray]
+    dense_alt_utilities: np.ndarray
+
+
+@dataclass
+class WorkflowOutput:
+    sampled_taz: np.ndarray
+    sampled_maz: np.ndarray
+    final_choices: np.ndarray
+    end_offset: int
 
 
 @dataclass
 class BenchmarkResult:
     scenario: str
+    x_field: str
+    workflow: str
+    draw_structure: str
     candidate: str
-    rows: int
-    draws_per_reseed: int
-    draws: int
+    chooser_count: int
+    taz_count: int
+    sample_size: int
+    max_maz_count: int
+    dense_alt_count: int
+    end_offset: int
+    total_draws: int
     repeat: int
     mean_seconds: float
     std_seconds: float
@@ -88,6 +214,14 @@ class BenchmarkResult:
 @dataclass
 class SeedUnitTestResult:
     candidate: str
+    passed: bool
+    message: str
+
+
+@dataclass
+class WorkflowUnitTestResult:
+    candidate: str
+    workflow: str
     passed: bool
     message: str
 
@@ -130,35 +264,19 @@ def timed_repeats(func: Callable[[], object], repeat: int) -> tuple[list[float],
     return durations, int(peak)
 
 
+def _uniforms_to_gumbel(values: np.ndarray) -> np.ndarray:
+    clipped = np.clip(values, 1e-12, 1 - 1e-12)
+    return -np.log(-np.log(clipped))
+
+
 class RNGCandidate:
     name = "base"
 
     def draw_uniform(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
         raise NotImplementedError
 
-    def draw_normal(
-        self,
-        seeds: np.ndarray,
-        mu: float,
-        sigma: float,
-        size: int | None = None,
-        offset: int = 0,
-        lognormal: bool = False,
-    ) -> np.ndarray:
+    def draw_gumbel(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
         raise NotImplementedError
-
-    def draw_choice(
-        self,
-        seeds: np.ndarray,
-        a: np.ndarray,
-        size: int,
-        replace: bool,
-        offset: int = 0,
-    ) -> np.ndarray:
-        raise NotImplementedError
-
-    def supports_choice(self, replace: bool) -> bool:
-        return True
 
     def instance_factory(self, seed: int):
         raise NotImplementedError
@@ -166,14 +284,6 @@ class RNGCandidate:
 
 class LegacyRandomStateCandidate(RNGCandidate):
     name = "RandomState"
-
-    def _generators(self, seeds: np.ndarray, offset: int = 0):
-        prng = np.random.RandomState()
-        for seed in seeds:
-            prng.seed(int(seed))
-            if offset:
-                prng.rand(offset)
-            yield prng
 
     def draw_uniform(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
         prng = np.random.RandomState()
@@ -185,38 +295,8 @@ class LegacyRandomStateCandidate(RNGCandidate):
             out[i] = prng.rand(n)
         return out
 
-    def draw_normal(
-        self,
-        seeds: np.ndarray,
-        mu: float,
-        sigma: float,
-        size: int | None = None,
-        offset: int = 0,
-        lognormal: bool = False,
-    ) -> np.ndarray:
-        generators = self._generators(seeds, offset=offset)
-        if lognormal:
-            rands = np.asanyarray(
-                [prng.lognormal(mean=mu, sigma=sigma, size=size) for prng in generators]
-            )
-        else:
-            rands = np.asanyarray(
-                [prng.normal(loc=mu, scale=sigma, size=size) for prng in generators]
-            )
-        return rands
-
-    def draw_choice(
-        self,
-        seeds: np.ndarray,
-        a: np.ndarray,
-        size: int,
-        replace: bool,
-        offset: int = 0,
-    ) -> np.ndarray:
-        generators = self._generators(seeds, offset=offset)
-        return np.concatenate(
-            tuple(prng.choice(a, size=size, replace=replace) for prng in generators)
-        )
+    def draw_gumbel(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
+        return _uniforms_to_gumbel(self.draw_uniform(seeds, n=n, offset=offset))
 
     def instance_factory(self, seed: int):
         return np.random.RandomState(seed)
@@ -233,13 +313,6 @@ class GeneratorBitGenCandidate(RNGCandidate):
     def _make_rng(self, seed: int) -> np.random.Generator:
         return np.random.Generator(self.bitgen_cls(seed))
 
-    def _generators(self, seeds: np.ndarray, offset: int = 0):
-        for seed in seeds:
-            rng = self._make_rng(int(seed))
-            if offset:
-                rng.random(offset)
-            yield rng
-
     def draw_uniform(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
         out = np.empty((len(seeds), n), dtype=np.float64)
         for i, seed in enumerate(seeds):
@@ -249,38 +322,8 @@ class GeneratorBitGenCandidate(RNGCandidate):
             out[i] = rng.random(n)
         return out
 
-    def draw_normal(
-        self,
-        seeds: np.ndarray,
-        mu: float,
-        sigma: float,
-        size: int | None = None,
-        offset: int = 0,
-        lognormal: bool = False,
-    ) -> np.ndarray:
-        generators = self._generators(seeds, offset=offset)
-        if lognormal:
-            rands = np.asanyarray(
-                [rng.lognormal(mean=mu, sigma=sigma, size=size) for rng in generators]
-            )
-        else:
-            rands = np.asanyarray(
-                [rng.normal(loc=mu, scale=sigma, size=size) for rng in generators]
-            )
-        return rands
-
-    def draw_choice(
-        self,
-        seeds: np.ndarray,
-        a: np.ndarray,
-        size: int,
-        replace: bool,
-        offset: int = 0,
-    ) -> np.ndarray:
-        generators = self._generators(seeds, offset=offset)
-        return np.concatenate(
-            tuple(rng.choice(a, size=size, replace=replace) for rng in generators)
-        )
+    def draw_gumbel(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
+        return _uniforms_to_gumbel(self.draw_uniform(seeds, n=n, offset=offset))
 
     def instance_factory(self, seed: int):
         return self._make_rng(seed)
@@ -295,62 +338,22 @@ class PhiloxAdvanceCandidate(GeneratorBitGenCandidate):
     def _make_bitgen(self, seed: int) -> np.random.Philox:
         return np.random.Philox(seed)
 
-    def _generators(self, seeds: np.ndarray, offset: int = 0):
-        for seed in seeds:
-            bitgen = self._make_bitgen(int(seed))
-            if offset:
-                bitgen.advance(offset)
-            yield np.random.Generator(bitgen)
-
     def draw_uniform(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
         out = np.empty((len(seeds), n), dtype=np.float64)
         for i, seed in enumerate(seeds):
             bitgen = self._make_bitgen(int(seed))
             if offset:
                 bitgen.advance(offset)
-            rng = np.random.Generator(bitgen)
-            out[i] = rng.random(n)
+            out[i] = np.random.Generator(bitgen).random(n)
         return out
 
-    def draw_normal(
-        self,
-        seeds: np.ndarray,
-        mu: float,
-        sigma: float,
-        size: int | None = None,
-        offset: int = 0,
-        lognormal: bool = False,
-    ) -> np.ndarray:
-        generators = self._generators(seeds, offset=offset)
-        if lognormal:
-            rands = np.asanyarray(
-                [rng.lognormal(mean=mu, sigma=sigma, size=size) for rng in generators]
-            )
-        else:
-            rands = np.asanyarray(
-                [rng.normal(loc=mu, scale=sigma, size=size) for rng in generators]
-            )
-        return rands
-
-    def draw_choice(
-        self,
-        seeds: np.ndarray,
-        a: np.ndarray,
-        size: int,
-        replace: bool,
-        offset: int = 0,
-    ) -> np.ndarray:
-        generators = self._generators(seeds, offset=offset)
-        return np.concatenate(
-            tuple(rng.choice(a, size=size, replace=replace) for rng in generators)
-        )
+    def draw_gumbel(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
+        return _uniforms_to_gumbel(self.draw_uniform(seeds, n=n, offset=offset))
 
 
 class VectorizedChooserHashCandidate(RNGCandidate):
     name = "VectorizedChooserHash"
 
-    # Stateless per-seed mixing keeps chooser draws independent of batch membership/order
-    # while still vectorizing across all choosers for speed.
     _MASK = np.uint64((1 << 64) - 1)
     _GOLDEN_GAMMA = np.uint64(0x9E3779B97F4A7C15)
     _MUL1 = np.uint64(0xBF58476D1CE4E5B9)
@@ -365,7 +368,8 @@ class VectorizedChooserHashCandidate(RNGCandidate):
         return state, z
 
     def _uniform_matrix(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
-        state = seeds.astype(np.uint64) + np.uint64(offset)
+        offset_state = np.uint64((int(offset) * int(self._GOLDEN_GAMMA)) & ((1 << 64) - 1))
+        state = (seeds.astype(np.uint64) + offset_state) & self._MASK
         out = np.empty((len(seeds), n), dtype=np.float64)
         for j in range(n):
             state, z = self._splitmix64_next(state)
@@ -375,56 +379,8 @@ class VectorizedChooserHashCandidate(RNGCandidate):
     def draw_uniform(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
         return self._uniform_matrix(seeds, n=n, offset=offset)
 
-    def draw_normal(
-        self,
-        seeds: np.ndarray,
-        mu: float,
-        sigma: float,
-        size: int | None = None,
-        offset: int = 0,
-        lognormal: bool = False,
-    ) -> np.ndarray:
-        one_size = 1 if size is None else int(size)
-        pairs = one_size if one_size % 2 == 0 else one_size + 1
-        uniforms = self._uniform_matrix(seeds, n=pairs, offset=offset)
-        u1 = np.clip(uniforms[:, 0::2], 1e-12, 1 - 1e-12)
-        u2 = uniforms[:, 1::2]
-        z0 = np.sqrt(-2.0 * np.log(u1)) * np.cos(2 * np.pi * u2)
-        values = mu + sigma * z0[:, :one_size]
-        if lognormal:
-            values = np.exp(values)
-        return values
-
-    def draw_choice(
-        self,
-        seeds: np.ndarray,
-        a: np.ndarray,
-        size: int,
-        replace: bool,
-        offset: int = 0,
-    ) -> np.ndarray:
-        draw_size = int(size)
-
-        if draw_size <= 0:
-            return np.empty((len(seeds), 0), dtype=a.dtype)
-
-        if not replace and draw_size > len(a):
-            raise ValueError(
-                f"Cannot take a sample larger than population when replace=False: {draw_size} > {len(a)}"
-            )
-
-        uniforms = self._uniform_matrix(seeds, n=draw_size, offset=offset)
-
-        if replace:
-            idx = np.floor(uniforms * len(a)).astype(np.int64)
-            idx = np.clip(idx, 0, len(a) - 1)
-            return a[idx]
-
-        # Deterministic without-replacement per row: draw one key per alternative,
-        # then take the alternatives with the lowest keys.
-        keys = self._uniform_matrix(seeds, n=len(a), offset=offset)
-        picks = np.argsort(keys, axis=1)[:, :draw_size]
-        return a[picks]
+    def draw_gumbel(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
+        return _uniforms_to_gumbel(self._uniform_matrix(seeds, n=n, offset=offset))
 
     def instance_factory(self, seed: int):
         return np.random.Generator(np.random.PCG64(seed))
@@ -435,12 +391,8 @@ def available_candidates() -> dict[str, RNGCandidate]:
         "RandomState": LegacyRandomStateCandidate(),
         "GeneratorPCG64": GeneratorBitGenCandidate(np.random.PCG64, "GeneratorPCG64"),
         "GeneratorSFC64": GeneratorBitGenCandidate(np.random.SFC64, "GeneratorSFC64"),
-        "GeneratorPhilox": GeneratorBitGenCandidate(
-            np.random.Philox, "GeneratorPhilox"
-        ),
-        "GeneratorMT19937": GeneratorBitGenCandidate(
-            np.random.MT19937, "GeneratorMT19937"
-        ),
+        "GeneratorPhilox": GeneratorBitGenCandidate(np.random.Philox, "GeneratorPhilox"),
+        "GeneratorMT19937": GeneratorBitGenCandidate(np.random.MT19937, "GeneratorMT19937"),
         "PhiloxAdvance": PhiloxAdvanceCandidate(),
         "VectorizedChooserHash": VectorizedChooserHashCandidate(),
     }
@@ -451,256 +403,593 @@ def summarize_times(times: list[float]) -> tuple[float, float]:
     return float(arr.mean()), float(arr.std(ddof=0))
 
 
-def make_result(
-    scenario: str,
+def _deep_copy_dict(value: dict) -> dict:
+    out: dict = {}
+    for key, item in value.items():
+        out[key] = _deep_copy_dict(item) if isinstance(item, dict) else item
+    return out
+
+
+def _deep_update(base: dict, updates: dict) -> dict:
+    for key, value in updates.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _deep_update(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
+def resolve_run_settings(settings: dict) -> dict:
+    resolved = {k: v for k, v in settings.items()}
+    for key, value in settings.items():
+        if isinstance(value, dict):
+            resolved[key] = _deep_copy_dict(value)
+    profile = str(resolved.get("run_profile", "full")).strip().lower()
+    if profile not in RUN_PROFILES:
+        valid = ", ".join(sorted(RUN_PROFILES.keys()))
+        raise ValueError(f"Unknown run_profile '{profile}'. Valid options: {valid}")
+    return _deep_update(resolved, RUN_PROFILES[profile])
+
+
+def select_candidates(settings: dict) -> list[RNGCandidate]:
+    candidate_map = available_candidates()
+    requested = settings.get("candidates", "all")
+
+    if isinstance(requested, str) and requested.lower() == "all":
+        return list(candidate_map.values())
+
+    if not isinstance(requested, list):
+        raise ValueError("RUN_SETTINGS['candidates'] must be 'all' or a list of names")
+
+    missing = [name for name in requested if name not in candidate_map]
+    if missing:
+        raise ValueError(
+            f"Unknown candidate names in RUN_SETTINGS['candidates']: {missing}"
+        )
+
+    return [candidate_map[name] for name in requested]
+
+
+def _build_maz_counts(taz_count: int, max_maz_count: int, maz_shape: str) -> np.ndarray:
+    if max_maz_count <= 0:
+        raise ValueError("max_maz_count must be positive")
+    if maz_shape == "uniform":
+        return np.full(taz_count, max_maz_count, dtype=np.int64)
+    if maz_shape != "ragged":
+        raise ValueError(f"Unknown maz_shape '{maz_shape}'")
+    counts = 1 + ((np.arange(taz_count, dtype=np.int64) * 7 + 3) % max_maz_count)
+    return counts.astype(np.int64)
+
+
+def build_destination_context(spec: DestinationChoiceSpec) -> DestinationChoiceContext:
+    taz_idx = np.arange(spec.taz_count, dtype=np.float64)
+    taz_weights = 1.0 + ((taz_idx % 11.0) + 1.0)
+    taz_weights *= 1.0 + 0.15 * np.sin((taz_idx + 1.0) / 7.0)
+    taz_weights = np.clip(taz_weights, 1e-6, None)
+    taz_probs = taz_weights / taz_weights.sum()
+    taz_prob_cdf = np.cumsum(taz_probs)
+    taz_prob_cdf[-1] = 1.0
+
+    taz_sample_utilities = np.log(taz_probs + 1e-12) * 0.75 + 0.05 * np.cos(taz_idx / 5.0)
+
+    maz_counts = _build_maz_counts(spec.taz_count, spec.max_maz_count, spec.maz_shape)
+    total_maz_ids = int(maz_counts.sum())
+    if total_maz_ids > spec.dense_alt_count:
+        raise ValueError(
+            "dense_alt_count must cover all concrete MAZ ids in the benchmark: "
+            f"need at least {total_maz_ids}, got {spec.dense_alt_count}"
+        )
+
+    maz_weights_padded = np.zeros((spec.taz_count, spec.max_maz_count), dtype=np.float64)
+    maz_id_lookup = np.full((spec.taz_count, spec.max_maz_count), -1, dtype=np.int64)
+    maz_weight_lists: list[np.ndarray] = []
+    maz_id_lists: list[np.ndarray] = []
+
+    next_maz_id = 0
+    for taz in range(spec.taz_count):
+        count = int(maz_counts[taz])
+        ids = np.arange(next_maz_id, next_maz_id + count, dtype=np.int64)
+        next_maz_id += count
+        weight_idx = np.arange(count, dtype=np.float64)
+        weights = 1.0 + ((weight_idx + taz) % 5.0)
+        weights *= 1.0 + 0.05 * np.cos((weight_idx + 1.0) * (taz + 1.0) / 11.0)
+        weights = np.clip(weights, 1e-6, None)
+        weights /= weights.sum()
+        maz_weights_padded[taz, :count] = weights
+        maz_id_lookup[taz, :count] = ids
+        maz_weight_lists.append(weights.astype(np.float64))
+        maz_id_lists.append(ids)
+
+    dense_idx = np.arange(spec.dense_alt_count, dtype=np.float64)
+    dense_alt_utilities = 0.15 * np.sin((dense_idx + 1.0) / 13.0) + 0.05 * np.log1p(dense_idx)
+
+    return DestinationChoiceContext(
+        taz_prob_cdf=taz_prob_cdf,
+        taz_sample_utilities=taz_sample_utilities.astype(np.float64),
+        maz_counts=maz_counts,
+        maz_weights_padded=maz_weights_padded,
+        maz_id_lookup=maz_id_lookup,
+        maz_weight_lists=maz_weight_lists,
+        maz_id_lists=maz_id_lists,
+        dense_alt_utilities=dense_alt_utilities.astype(np.float64),
+    )
+
+
+def _sample_from_cdf(cdf: np.ndarray, draws: np.ndarray) -> np.ndarray:
+    picked = np.searchsorted(cdf, draws.reshape(-1), side="right")
+    picked = np.clip(picked, 0, len(cdf) - 1)
+    return picked.reshape(draws.shape)
+
+
+def _prob_sample_stage(
     candidate: RNGCandidate,
-    rows: int,
-    draws_per_reseed: int,
-    draws: int,
+    seeds: np.ndarray,
+    context: DestinationChoiceContext,
+    sample_size: int,
+    draw_structure: str,
+    offset: int,
+) -> tuple[np.ndarray, int]:
+    chooser_count = len(seeds)
+    sampled_taz = np.empty((chooser_count, sample_size), dtype=np.int64)
+    if draw_structure == "batched":
+        draws = candidate.draw_uniform(seeds, n=sample_size, offset=offset)
+        sampled_taz[:] = _sample_from_cdf(context.taz_prob_cdf, draws)
+        offset += sample_size
+        return sampled_taz, offset
+
+    for sample_idx in range(sample_size):
+        draws = candidate.draw_uniform(seeds, n=1, offset=offset).reshape(-1)
+        sampled_taz[:, sample_idx] = _sample_from_cdf(context.taz_prob_cdf, draws)
+        offset += 1
+    return sampled_taz, offset
+
+
+def _utility_sample_stage(
+    candidate: RNGCandidate,
+    seeds: np.ndarray,
+    context: DestinationChoiceContext,
+    taz_count: int,
+    sample_size: int,
+    draw_structure: str,
+    offset: int,
+) -> tuple[np.ndarray, int]:
+    chooser_count = len(seeds)
+    sampled_taz = np.empty((chooser_count, sample_size), dtype=np.int64)
+    if draw_structure == "batched":
+        draws = candidate.draw_gumbel(seeds, n=taz_count * sample_size, offset=offset)
+        shaped = draws.reshape(chooser_count, taz_count, sample_size)
+        sampled_taz[:] = np.argmax(
+            shaped + context.taz_sample_utilities[np.newaxis, :, np.newaxis],
+            axis=1,
+        )
+        offset += taz_count * sample_size
+        return sampled_taz, offset
+
+    best_scores = np.full((chooser_count, sample_size), -np.inf, dtype=np.float64)
+    sampled_taz.fill(-1)
+    for alt_idx in range(taz_count):
+        draws = candidate.draw_gumbel(seeds, n=sample_size, offset=offset)
+        scores = draws + context.taz_sample_utilities[alt_idx]
+        better = scores > best_scores
+        best_scores[better] = scores[better]
+        sampled_taz[better] = alt_idx
+        offset += sample_size
+    return sampled_taz, offset
+
+
+def _choose_maz_dense(
+    candidate: RNGCandidate,
+    seeds: np.ndarray,
+    context: DestinationChoiceContext,
+    sampled_taz: np.ndarray,
+    draw_structure: str,
+    offset: int,
+) -> tuple[np.ndarray, int]:
+    chooser_count, sample_size = sampled_taz.shape
+    sampled_maz = np.empty((chooser_count, sample_size), dtype=np.int64)
+    if draw_structure == "batched":
+        flat_taz = sampled_taz.reshape(-1)
+        max_selected = int(context.maz_counts[flat_taz].max())
+        weights = context.maz_weights_padded[flat_taz, :max_selected]
+        cdf = np.cumsum(weights, axis=1)
+        draws = candidate.draw_uniform(seeds, n=sample_size, offset=offset).reshape(-1, 1)
+        positions = np.argmax((cdf - draws) > 0.0, axis=1)
+        sampled_maz[:] = context.maz_id_lookup[flat_taz, positions].reshape(
+            chooser_count, sample_size
+        )
+        offset += sample_size
+        return sampled_maz, offset
+
+    for sample_idx in range(sample_size):
+        taz_col = sampled_taz[:, sample_idx]
+        max_selected = int(context.maz_counts[taz_col].max())
+        weights = context.maz_weights_padded[taz_col, :max_selected]
+        cdf = np.cumsum(weights, axis=1)
+        draws = candidate.draw_uniform(seeds, n=1, offset=offset).reshape(-1, 1)
+        positions = np.argmax((cdf - draws) > 0.0, axis=1)
+        sampled_maz[:, sample_idx] = context.maz_id_lookup[taz_col, positions]
+        offset += 1
+    return sampled_maz, offset
+
+
+def _choose_maz_ragged(
+    candidate: RNGCandidate,
+    seeds: np.ndarray,
+    context: DestinationChoiceContext,
+    sampled_taz: np.ndarray,
+    offset: int,
+) -> tuple[np.ndarray, int]:
+    chooser_count, sample_size = sampled_taz.shape
+    sampled_maz = np.empty((chooser_count, sample_size), dtype=np.int64)
+    for sample_idx in range(sample_size):
+        taz_col = sampled_taz[:, sample_idx]
+        draws = candidate.draw_uniform(seeds, n=1, offset=offset).reshape(-1)
+        offset += 1
+        for taz in np.unique(taz_col):
+            mask = taz_col == taz
+            weights = context.maz_weight_lists[int(taz)]
+            ids = context.maz_id_lists[int(taz)]
+            cdf = np.cumsum(weights)
+            positions = np.searchsorted(cdf, draws[mask], side="right")
+            positions = np.clip(positions, 0, len(ids) - 1)
+            sampled_maz[mask, sample_idx] = ids[positions]
+    return sampled_maz, offset
+
+
+def _final_probability_choice(
+    candidate: RNGCandidate,
+    seeds: np.ndarray,
+    context: DestinationChoiceContext,
+    sampled_maz: np.ndarray,
+    offset: int,
+) -> tuple[np.ndarray, int]:
+    weights = np.exp(context.dense_alt_utilities[sampled_maz])
+    weights += 0.05 * (np.arange(sampled_maz.shape[1], dtype=np.float64) + 1.0)
+    probs = weights / weights.sum(axis=1, keepdims=True)
+    draws = candidate.draw_uniform(seeds, n=1, offset=offset).reshape(-1, 1)
+    positions = np.argmax((np.cumsum(probs, axis=1) - draws) > 0.0, axis=1)
+    choices = sampled_maz[np.arange(sampled_maz.shape[0]), positions]
+    return choices, offset + 1
+
+
+def _final_dense_eet_choice(
+    candidate: RNGCandidate,
+    seeds: np.ndarray,
+    context: DestinationChoiceContext,
+    sampled_maz: np.ndarray,
+    draw_structure: str,
+    dense_alt_count: int,
+    dense_eet_block: int,
+    offset: int,
+) -> tuple[np.ndarray, int]:
+    chooser_count, sample_size = sampled_maz.shape
+    base_utils = context.dense_alt_utilities[sampled_maz]
+
+    if draw_structure == "batched":
+        draws = candidate.draw_gumbel(seeds, n=dense_alt_count, offset=offset)
+        selected_noise = np.take_along_axis(draws, sampled_maz, axis=1)
+        positions = np.argmax(base_utils + selected_noise, axis=1)
+        choices = sampled_maz[np.arange(chooser_count), positions]
+        return choices, offset + dense_alt_count
+
+    block = max(1, min(int(dense_eet_block), dense_alt_count))
+    selected_noise = np.empty((chooser_count, sample_size), dtype=np.float64)
+    next_offset = offset
+    for block_start in range(0, dense_alt_count, block):
+        block_end = min(block_start + block, dense_alt_count)
+        block_size = block_end - block_start
+        draws = candidate.draw_gumbel(seeds, n=block_size, offset=next_offset)
+        next_offset += block_size
+        for col in range(sample_size):
+            ids = sampled_maz[:, col]
+            mask = (ids >= block_start) & (ids < block_end)
+            if mask.any():
+                selected_noise[mask, col] = draws[mask, ids[mask] - block_start]
+
+    positions = np.argmax(base_utils + selected_noise, axis=1)
+    choices = sampled_maz[np.arange(chooser_count), positions]
+    return choices, next_offset
+
+
+def execute_destination_workflow(
+    candidate: RNGCandidate,
+    spec: DestinationChoiceSpec,
+    context: DestinationChoiceContext,
+    seeds: np.ndarray,
+) -> WorkflowOutput:
+    workflow_def = WORKFLOW_DEFS[spec.workflow]
+    offset = 0
+
+    if workflow_def["sample_method"] == "prob":
+        sampled_taz, offset = _prob_sample_stage(
+            candidate,
+            seeds,
+            context,
+            sample_size=spec.sample_size,
+            draw_structure=spec.draw_structure,
+            offset=offset,
+        )
+    else:
+        sampled_taz, offset = _utility_sample_stage(
+            candidate,
+            seeds,
+            context,
+            taz_count=spec.taz_count,
+            sample_size=spec.sample_size,
+            draw_structure=spec.draw_structure,
+            offset=offset,
+        )
+
+    if spec.draw_structure == "ragged":
+        sampled_maz, offset = _choose_maz_ragged(
+            candidate,
+            seeds,
+            context,
+            sampled_taz=sampled_taz,
+            offset=offset,
+        )
+    else:
+        sampled_maz, offset = _choose_maz_dense(
+            candidate,
+            seeds,
+            context,
+            sampled_taz=sampled_taz,
+            draw_structure=spec.draw_structure,
+            offset=offset,
+        )
+
+    if workflow_def["final_method"] == "prob":
+        final_choices, offset = _final_probability_choice(
+            candidate,
+            seeds,
+            context,
+            sampled_maz=sampled_maz,
+            offset=offset,
+        )
+    else:
+        final_choices, offset = _final_dense_eet_choice(
+            candidate,
+            seeds,
+            context,
+            sampled_maz=sampled_maz,
+            draw_structure=spec.draw_structure,
+            dense_alt_count=spec.dense_alt_count,
+            dense_eet_block=spec.serial_dense_eet_block,
+            offset=offset,
+        )
+
+    return WorkflowOutput(
+        sampled_taz=sampled_taz,
+        sampled_maz=sampled_maz,
+        final_choices=final_choices,
+        end_offset=offset,
+    )
+
+
+def workflow_stage_draws(spec: DestinationChoiceSpec) -> dict[str, int]:
+    workflow_def = WORKFLOW_DEFS[spec.workflow]
+    sample_draws = spec.sample_size
+    if workflow_def["sample_method"] == "utility":
+        sample_draws *= spec.taz_count
+    final_draws = 1 if workflow_def["final_method"] == "prob" else spec.dense_alt_count
+    return {
+        "sample": sample_draws,
+        "maz": spec.sample_size,
+        "final": final_draws,
+    }
+
+
+def _scenario_notes(spec: DestinationChoiceSpec) -> str:
+    stage_draws = workflow_stage_draws(spec)
+    return (
+        f"maz_shape={spec.maz_shape}; draws_per_chooser="
+        f"sample:{stage_draws['sample']},maz:{stage_draws['maz']},final:{stage_draws['final']}; "
+        f"end_offset={sum(stage_draws.values())}; structure={spec.draw_structure}; dense_eet_block={spec.serial_dense_eet_block}"
+    )
+
+
+def make_result(
+    spec: DestinationChoiceSpec,
+    candidate: RNGCandidate,
     repeat: int,
     times: list[float],
     peak_memory_bytes: int,
-    notes: str = "",
 ) -> BenchmarkResult:
     mean_seconds, std_seconds = summarize_times(times)
-    throughput = 0.0 if mean_seconds <= 0 else draws / mean_seconds
+    end_offset = sum(workflow_stage_draws(spec).values())
+    total_draws = spec.chooser_count * end_offset
+    throughput = 0.0 if mean_seconds <= 0 else total_draws / mean_seconds
     return BenchmarkResult(
-        scenario=scenario,
+        scenario=spec.scenario,
+        x_field=spec.x_field,
+        workflow=spec.workflow,
+        draw_structure=spec.draw_structure,
         candidate=candidate.name,
-        rows=rows,
-        draws_per_reseed=draws_per_reseed,
-        draws=draws,
+        chooser_count=spec.chooser_count,
+        taz_count=spec.taz_count,
+        sample_size=spec.sample_size,
+        max_maz_count=spec.max_maz_count,
+        dense_alt_count=spec.dense_alt_count,
+        end_offset=end_offset,
+        total_draws=total_draws,
         repeat=repeat,
         mean_seconds=mean_seconds,
         std_seconds=std_seconds,
         throughput_draws_per_sec=throughput,
         peak_memory_bytes=peak_memory_bytes,
-        notes=notes,
+        notes=_scenario_notes(spec),
     )
 
 
-def benchmark_seed_generation(rows: int, repeat: int) -> BenchmarkResult:
-    def workload():
-        return activitysim_row_seeds(
-            rows=rows,
-            base_seed=12345,
-            channel_name="persons",
-            step_name="trip_mode_choice",
-        )
-
-    times, peak = timed_repeats(workload, repeat)
-    draws = rows
-    return make_result(
-        scenario="A0_seed_formula",
-        candidate=LegacyRandomStateCandidate(),
-        rows=rows,
-        draws_per_reseed=1,
-        draws=draws,
-        repeat=repeat,
-        times=times,
-        peak_memory_bytes=peak,
-        notes="Vectorized seed generation only",
-    )
-
-
-def benchmark_scenario_uniform(
+def benchmark_destination_choice(
     candidate: RNGCandidate,
-    rows: int,
-    n_draws: int,
+    spec: DestinationChoiceSpec,
     repeat: int,
 ) -> BenchmarkResult:
-    seeds = activitysim_row_seeds(rows, 12345, "persons", "logit_make_choices")
+    context = build_destination_context(spec)
+    seeds = activitysim_row_seeds(
+        spec.chooser_count,
+        12345,
+        "persons",
+        f"destination_choice__{spec.workflow}",
+    )
 
     def workload():
-        return candidate.draw_uniform(seeds=seeds, n=n_draws, offset=0)
+        return execute_destination_workflow(candidate, spec, context, seeds)
 
     times, peak = timed_repeats(workload, repeat)
-    return make_result(
-        scenario=f"A_uniform_n{n_draws}",
-        candidate=candidate,
-        rows=rows,
-        draws_per_reseed=n_draws,
-        draws=rows * n_draws,
-        repeat=repeat,
-        times=times,
-        peak_memory_bytes=peak,
+    return make_result(spec, candidate, repeat, times, peak)
+
+
+def _workflow_signature(output: WorkflowOutput, row_idx: int) -> tuple:
+    return (
+        tuple(output.sampled_taz[row_idx].tolist()),
+        tuple(output.sampled_maz[row_idx].tolist()),
+        int(output.final_choices[row_idx]),
+        int(output.end_offset),
     )
 
 
-def benchmark_scenario_normal(
+def workflow_invariance_unit_test(
     candidate: RNGCandidate,
-    rows: int,
-    size: int,
-    repeat: int,
-) -> BenchmarkResult:
-    seeds = activitysim_row_seeds(rows, 12345, "households", "annotate_households")
+    workflow: str,
+    draw_structure: str,
+    serial_dense_eet_block: int,
+) -> WorkflowUnitTestResult:
+    target_seed = np.uint32(987654321)
+    solo = np.asarray([target_seed], dtype=np.uint32)
+    batch_a = np.asarray([111111111, target_seed, 222222222, 333333333], dtype=np.uint32)
+    batch_b = np.asarray([333333333, 222222222, target_seed, 111111111], dtype=np.uint32)
+    spec = DestinationChoiceSpec(
+        scenario="workflow_check",
+        x_field="chooser_count",
+        workflow=workflow,
+        draw_structure=draw_structure,
+        chooser_count=len(batch_a),
+        taz_count=24,
+        sample_size=4,
+        max_maz_count=6,
+        dense_alt_count=128,
+        serial_dense_eet_block=serial_dense_eet_block,
+    )
+    context = build_destination_context(spec)
 
-    def workload():
-        return candidate.draw_normal(
-            seeds=seeds,
-            mu=0.5,
-            sigma=1.25,
-            size=size,
-            offset=0,
-            lognormal=False,
-        )
+    solo_spec = DestinationChoiceSpec(
+        scenario=spec.scenario,
+        x_field=spec.x_field,
+        workflow=spec.workflow,
+        draw_structure=spec.draw_structure,
+        chooser_count=1,
+        taz_count=spec.taz_count,
+        sample_size=spec.sample_size,
+        max_maz_count=spec.max_maz_count,
+        dense_alt_count=spec.dense_alt_count,
+        serial_dense_eet_block=spec.serial_dense_eet_block,
+    )
+    solo_context = build_destination_context(solo_spec)
 
-    times, peak = timed_repeats(workload, repeat)
-    return make_result(
-        scenario=f"C_normal_size{size}",
-        candidate=candidate,
-        rows=rows,
-        draws_per_reseed=size,
-        draws=rows * size,
-        repeat=repeat,
-        times=times,
-        peak_memory_bytes=peak,
+    solo_out = execute_destination_workflow(candidate, solo_spec, solo_context, solo)
+    batch_a_out = execute_destination_workflow(candidate, spec, context, batch_a)
+    batch_b_out = execute_destination_workflow(candidate, spec, context, batch_b)
+
+    idx_a = int(np.where(batch_a == target_seed)[0][0])
+    idx_b = int(np.where(batch_b == target_seed)[0][0])
+
+    signature_solo = _workflow_signature(solo_out, 0)
+    signature_a = _workflow_signature(batch_a_out, idx_a)
+    signature_b = _workflow_signature(batch_b_out, idx_b)
+
+    passed = signature_solo == signature_a == signature_b
+    if passed:
+        message = f"{draw_structure}: invariant to batch membership/order"
+    else:
+        message = f"{draw_structure}: batch membership/order changed staged draws"
+    return WorkflowUnitTestResult(
+        candidate=candidate.name,
+        workflow=workflow,
+        passed=passed,
+        message=message,
     )
 
 
-def benchmark_scenario_choice(
+def workflow_structure_equivalence_unit_test(
     candidate: RNGCandidate,
-    rows: int,
-    a_size: int,
-    size: int,
-    replace: bool,
-    repeat: int,
-) -> BenchmarkResult:
-    if not candidate.supports_choice(replace=replace):
-        return BenchmarkResult(
-            scenario=f"D_choice_size{size}_replace{replace}",
-            candidate=candidate.name,
-            rows=rows,
-            draws_per_reseed=size,
-            draws=0,
-            repeat=repeat,
-            mean_seconds=math.nan,
-            std_seconds=math.nan,
-            throughput_draws_per_sec=math.nan,
-            peak_memory_bytes=0,
-            notes="Skipped: candidate does not support requested choice mode",
-        )
+    workflow: str,
+    serial_dense_eet_block: int,
+) -> WorkflowUnitTestResult:
+    base_kwargs = {
+        "scenario": "workflow_equivalence",
+        "x_field": "chooser_count",
+        "workflow": workflow,
+        "chooser_count": 6,
+        "taz_count": 32,
+        "sample_size": 5,
+        "max_maz_count": 7,
+        "dense_alt_count": 192,
+        "serial_dense_eet_block": serial_dense_eet_block,
+    }
+    seeds = activitysim_row_seeds(6, 12345, "persons", f"workflow_eq__{workflow}")
+    outputs: dict[str, WorkflowOutput] = {}
+    for draw_structure in ["batched", "serial", "ragged"]:
+        spec = DestinationChoiceSpec(draw_structure=draw_structure, **base_kwargs)
+        context = build_destination_context(spec)
+        outputs[draw_structure] = execute_destination_workflow(candidate, spec, context, seeds)
 
-    seeds = activitysim_row_seeds(rows, 12345, "tours", "interaction_sample")
-    a = np.arange(a_size, dtype=np.int64)
+    baseline = outputs["batched"]
+    passed = True
+    for output in outputs.values():
+        if not np.array_equal(output.sampled_taz, baseline.sampled_taz):
+            passed = False
+        if not np.array_equal(output.sampled_maz, baseline.sampled_maz):
+            passed = False
+        if not np.array_equal(output.final_choices, baseline.final_choices):
+            passed = False
+        if output.end_offset != baseline.end_offset:
+            passed = False
 
-    def workload():
-        return candidate.draw_choice(
-            seeds=seeds,
-            a=a,
-            size=size,
-            replace=replace,
-            offset=0,
-        )
-
-    times, peak = timed_repeats(workload, repeat)
-    return make_result(
-        scenario=f"D_choice_size{size}_replace{replace}",
-        candidate=candidate,
-        rows=rows,
-        draws_per_reseed=size,
-        draws=rows * size,
-        repeat=repeat,
-        times=times,
-        peak_memory_bytes=peak,
+    message = "draw structures agree on staged results" if passed else "draw structures diverged"
+    return WorkflowUnitTestResult(
+        candidate=candidate.name,
+        workflow=workflow,
+        passed=passed,
+        message=message,
     )
 
 
-def benchmark_scenario_fast_forward(
-    candidate: RNGCandidate,
-    rows: int,
-    offset: int,
-    repeat: int,
-) -> BenchmarkResult:
-    seeds = activitysim_row_seeds(rows, 12345, "trips", "trip_destination")
+def run_workflow_unit_tests(settings: dict, candidates: list[RNGCandidate]) -> bool:
+    dc = settings.get("destination_choice", {})
+    serial_dense_eet_block = int(dc.get("serial_dense_eet_block", 128))
+    workflows = list(dc.get("workflow_variants", list(WORKFLOW_DEFS.keys())))
+    draw_structures = list(dc.get("draw_structures", ["batched", "serial", "ragged"]))
+    print("\nDestination workflow unit tests")
+    print("-" * 80)
+    all_passed = True
+    for candidate in candidates:
+        for workflow in workflows:
+            for draw_structure in draw_structures:
+                invariance_result = workflow_invariance_unit_test(
+                    candidate,
+                    workflow,
+                    draw_structure,
+                    serial_dense_eet_block=serial_dense_eet_block,
+                )
+                status = "PASS" if invariance_result.passed else "FAIL"
+                print(
+                    f"{candidate.name:22} {workflow:30} {status:4} {invariance_result.message}"
+                )
+                all_passed = all_passed and invariance_result.passed
 
-    def workload():
-        return candidate.draw_uniform(seeds=seeds, n=1, offset=offset)
-
-    times, peak = timed_repeats(workload, repeat)
-    return make_result(
-        scenario=f"E_fast_forward_offset{offset}",
-        candidate=candidate,
-        rows=rows,
-        draws_per_reseed=1,
-        draws=rows,
-        repeat=repeat,
-        times=times,
-        peak_memory_bytes=peak,
-    )
-
-
-def benchmark_memory_instances(
-    candidate: RNGCandidate, count: int, repeat: int
-) -> BenchmarkResult:
-    def workload():
-        objs = [candidate.instance_factory(i + 1) for i in range(count)]
-        return objs
-
-    times, peak = timed_repeats(workload, repeat)
-    return make_result(
-        scenario="F_instance_memory",
-        candidate=candidate,
-        rows=count,
-        draws_per_reseed=1,
-        draws=count,
-        repeat=repeat,
-        times=times,
-        peak_memory_bytes=peak,
-        notes="Object instantiation memory stress",
-    )
-
-
-def benchmark_location_choice_reseed_sweep(
-    candidate: RNGCandidate,
-    reseeds: int,
-    draws_per_reseed: int,
-    repeat: int,
-    offset: int = 0,
-) -> BenchmarkResult:
-    seeds = activitysim_row_seeds(reseeds, 12345, "persons", "logit_make_choices")
-
-    def workload():
-        return candidate.draw_uniform(seeds=seeds, n=draws_per_reseed, offset=offset)
-
-    times, peak = timed_repeats(workload, repeat)
-    return make_result(
-        scenario="LC_reseed_sweep",
-        candidate=candidate,
-        rows=reseeds,
-        draws_per_reseed=draws_per_reseed,
-        draws=reseeds * draws_per_reseed,
-        repeat=repeat,
-        times=times,
-        peak_memory_bytes=peak,
-        notes=f"fixed_draws_per_reseed={draws_per_reseed}; offset={offset}",
-    )
-
-
-def benchmark_location_choice_draw_sweep(
-    candidate: RNGCandidate,
-    reseeds: int,
-    draws_per_reseed: int,
-    repeat: int,
-    offset: int = 0,
-) -> BenchmarkResult:
-    seeds = activitysim_row_seeds(reseeds, 12345, "persons", "logit_make_choices")
-
-    def workload():
-        return candidate.draw_uniform(seeds=seeds, n=draws_per_reseed, offset=offset)
-
-    times, peak = timed_repeats(workload, repeat)
-    return make_result(
-        scenario="LC_draw_sweep",
-        candidate=candidate,
-        rows=reseeds,
-        draws_per_reseed=draws_per_reseed,
-        draws=reseeds * draws_per_reseed,
-        repeat=repeat,
-        times=times,
-        peak_memory_bytes=peak,
-        notes=f"fixed_reseeds={reseeds}; offset={offset}",
-    )
+            equivalence_result = workflow_structure_equivalence_unit_test(
+                candidate,
+                workflow,
+                serial_dense_eet_block=serial_dense_eet_block,
+            )
+            status = "PASS" if equivalence_result.passed else "FAIL"
+            print(
+                f"{candidate.name:22} {workflow:30} {status:4} {equivalence_result.message}"
+            )
+            all_passed = all_passed and equivalence_result.passed
+    return all_passed
 
 
 def ks_one_sample_uniform(values: np.ndarray) -> tuple[float, float]:
@@ -716,7 +1005,6 @@ def ks_one_sample_uniform(values: np.ndarray) -> tuple[float, float]:
 
     en = math.sqrt(n) + 0.12 + 0.11 / math.sqrt(n)
     lam = en * d
-    # Asymptotic Kolmogorov distribution approximation.
     p = 0.0
     for k in range(1, 101):
         p += ((-1) ** (k - 1)) * math.exp(-2.0 * (k * k) * (lam * lam))
@@ -730,7 +1018,6 @@ def reproducibility_check(
     seeds = activitysim_row_seeds(rows, 12345, "persons", "repro_test")
     a = candidate.draw_uniform(seeds, n=n_draws, offset=5)
     b = candidate.draw_uniform(seeds, n=n_draws, offset=5)
-
     same_seed_ok = np.array_equal(a, b)
 
     alt_seeds = activitysim_row_seeds(rows, 12346, "persons", "repro_test")
@@ -760,43 +1047,22 @@ def seed_invariance_unit_test(
     draws_per_seed: int = 16,
     offset: int = 7,
 ) -> SeedUnitTestResult:
-    """
-    Small unit test for chooser-id invariance.
-
-    For a fixed chooser seed, draws should be identical regardless of which
-    other chooser seeds are present in the batch or their order.
-    """
-
     target_seed = np.uint32(987654321)
-
     solo = np.asarray([target_seed], dtype=np.uint32)
-    batch_a = np.asarray(
-        [111111111, target_seed, 222222222, 333333333], dtype=np.uint32
-    )
-    batch_b = np.asarray(
-        [333333333, 222222222, target_seed, 111111111], dtype=np.uint32
-    )
+    batch_a = np.asarray([111111111, target_seed, 222222222, 333333333], dtype=np.uint32)
+    batch_b = np.asarray([333333333, 222222222, target_seed, 111111111], dtype=np.uint32)
 
     solo_draw = candidate.draw_uniform(solo, n=draws_per_seed, offset=offset)[0]
-
     idx_a = int(np.where(batch_a == target_seed)[0][0])
     idx_b = int(np.where(batch_b == target_seed)[0][0])
-
-    batch_a_draw = candidate.draw_uniform(batch_a, n=draws_per_seed, offset=offset)[
-        idx_a
-    ]
-    batch_b_draw = candidate.draw_uniform(batch_b, n=draws_per_seed, offset=offset)[
-        idx_b
-    ]
+    batch_a_draw = candidate.draw_uniform(batch_a, n=draws_per_seed, offset=offset)[idx_a]
+    batch_b_draw = candidate.draw_uniform(batch_b, n=draws_per_seed, offset=offset)[idx_b]
 
     same_a = np.array_equal(solo_draw, batch_a_draw)
     same_b = np.array_equal(solo_draw, batch_b_draw)
     passed = bool(same_a and same_b)
-
     if passed:
-        message = (
-            "PASS: target chooser draws are invariant to batch membership and order"
-        )
+        message = "PASS: target chooser draws are invariant to batch membership and order"
     else:
         message = (
             "FAIL: target chooser draws changed with batch membership/order "
@@ -806,76 +1072,115 @@ def seed_invariance_unit_test(
     return SeedUnitTestResult(candidate=candidate.name, passed=passed, message=message)
 
 
-def run_seed_invariance_unit_tests(
-    settings: dict, candidates: list[RNGCandidate]
-) -> bool:
+def run_seed_invariance_unit_tests(settings: dict, candidates: list[RNGCandidate]) -> bool:
     draws_per_seed = int(settings.get("seed_unit_test_draws", 16))
     offset = int(settings.get("seed_unit_test_offset", 7))
-
     print("\nSeed invariance unit tests")
     print("-" * 80)
     print(f"Test config: draws_per_seed={draws_per_seed}, offset={offset}")
-
     all_passed = True
     for candidate in candidates:
-        result = seed_invariance_unit_test(
-            candidate,
-            draws_per_seed=draws_per_seed,
-            offset=offset,
-        )
+        result = seed_invariance_unit_test(candidate, draws_per_seed=draws_per_seed, offset=offset)
         status = "PASS" if result.passed else "FAIL"
         print(f"{result.candidate:22} {status:4} {result.message}")
         all_passed = all_passed and result.passed
-
     return all_passed
+
+
+def iter_destination_choice_specs(settings: dict) -> list[DestinationChoiceSpec]:
+    dc = settings.get("destination_choice", {})
+    workflows = list(dc.get("workflow_variants", list(WORKFLOW_DEFS.keys())))
+    draw_structures = list(dc.get("draw_structures", ["batched", "serial", "ragged"]))
+    maz_shape = str(dc.get("maz_shape", "ragged"))
+    serial_dense_eet_block = int(dc.get("serial_dense_eet_block", 128))
+
+    specs: list[DestinationChoiceSpec] = []
+    chooser_sweep = dc.get("chooser_sweep", {})
+    if chooser_sweep.get("enabled", True):
+        for chooser_count in [int(v) for v in chooser_sweep.get("chooser_counts", [])]:
+            for workflow in workflows:
+                for draw_structure in draw_structures:
+                    specs.append(
+                        DestinationChoiceSpec(
+                            scenario=f"DC_chooser_sweep__{workflow}",
+                            x_field="chooser_count",
+                            workflow=workflow,
+                            draw_structure=draw_structure,
+                            chooser_count=chooser_count,
+                            taz_count=int(chooser_sweep.get("taz_count", 128)),
+                            sample_size=int(chooser_sweep.get("sample_size", 12)),
+                            max_maz_count=int(chooser_sweep.get("max_maz_count", 24)),
+                            dense_alt_count=int(chooser_sweep.get("dense_alt_count", 4096)),
+                            maz_shape=maz_shape,
+                            serial_dense_eet_block=serial_dense_eet_block,
+                        )
+                    )
+
+    sample_sweep = dc.get("sample_sweep", {})
+    if sample_sweep.get("enabled", True):
+        for sample_size in [int(v) for v in sample_sweep.get("sample_sizes", [])]:
+            for workflow in workflows:
+                for draw_structure in draw_structures:
+                    specs.append(
+                        DestinationChoiceSpec(
+                            scenario=f"DC_sample_sweep__{workflow}",
+                            x_field="sample_size",
+                            workflow=workflow,
+                            draw_structure=draw_structure,
+                            chooser_count=int(sample_sweep.get("chooser_count", 1000)),
+                            taz_count=int(sample_sweep.get("taz_count", 128)),
+                            sample_size=sample_size,
+                            max_maz_count=int(sample_sweep.get("max_maz_count", 24)),
+                            dense_alt_count=int(sample_sweep.get("dense_alt_count", 4096)),
+                            maz_shape=maz_shape,
+                            serial_dense_eet_block=serial_dense_eet_block,
+                        )
+                    )
+
+    maz_sweep = dc.get("maz_sweep", {})
+    if maz_sweep.get("enabled", True):
+        for max_maz_count in [int(v) for v in maz_sweep.get("max_maz_counts", [])]:
+            for workflow in workflows:
+                for draw_structure in draw_structures:
+                    specs.append(
+                        DestinationChoiceSpec(
+                            scenario=f"DC_maz_sweep__{workflow}",
+                            x_field="max_maz_count",
+                            workflow=workflow,
+                            draw_structure=draw_structure,
+                            chooser_count=int(maz_sweep.get("chooser_count", 1000)),
+                            taz_count=int(maz_sweep.get("taz_count", 128)),
+                            sample_size=int(maz_sweep.get("sample_size", 12)),
+                            max_maz_count=max_maz_count,
+                            dense_alt_count=int(maz_sweep.get("dense_alt_count", 4096)),
+                            maz_shape=maz_shape,
+                            serial_dense_eet_block=serial_dense_eet_block,
+                        )
+                    )
+
+    return specs
 
 
 def print_results(results: list[BenchmarkResult]) -> None:
     header = (
-        f"{'Scenario':30} {'Candidate':22} {'Reseeds':>9} {'Draws/Seed':>12} {'TotalDraws':>12} {'Mean(s)':>10} "
-        f"{'Std(s)':>10} {'Draws/s':>14} {'Peak MB':>10}"
+        f"{'Scenario':30} {'Structure':10} {'Candidate':22} {'Choosers':>9} {'Sample':>8} {'MaxMAZ':>8} "
+        f"{'EndOff':>8} {'Draws':>12} {'Mean(s)':>10} {'Draws/s':>14} {'Peak MB':>10}"
     )
     print("\n" + header)
     print("-" * len(header))
-
     for r in results:
         peak_mb = r.peak_memory_bytes / (1024 * 1024)
-        mean_str = (
-            f"{r.mean_seconds:10.6f}" if np.isfinite(r.mean_seconds) else f"{'nan':>10}"
-        )
-        std_str = (
-            f"{r.std_seconds:10.6f}" if np.isfinite(r.std_seconds) else f"{'nan':>10}"
-        )
-        tput_str = (
-            f"{r.throughput_draws_per_sec:14.1f}"
-            if np.isfinite(r.throughput_draws_per_sec)
-            else f"{'nan':>14}"
-        )
         print(
-            f"{r.scenario:30} {r.candidate:22} {r.rows:9d} {r.draws_per_reseed:12d} {r.draws:12d} "
-            f"{mean_str} {std_str} {tput_str} {peak_mb:10.2f}"
+            f"{r.scenario:30} {r.draw_structure:10} {r.candidate:22} {r.chooser_count:9d} {r.sample_size:8d} {r.max_maz_count:8d} "
+            f"{r.end_offset:8d} {r.total_draws:12d} {r.mean_seconds:10.6f} {r.throughput_draws_per_sec:14.1f} {peak_mb:10.2f}"
         )
-        if r.notes:
-            print(f"{'':30} {'':22} Notes: {r.notes}")
+        print(f"{'':30} {'':10} {'':22} Notes: {r.notes}")
 
 
 def write_csv(results: list[BenchmarkResult], csv_path: str) -> None:
-    fields = [
-        "scenario",
-        "candidate",
-        "rows",
-        "draws_per_reseed",
-        "draws",
-        "repeat",
-        "mean_seconds",
-        "std_seconds",
-        "throughput_draws_per_sec",
-        "peak_memory_bytes",
-        "notes",
-    ]
     Path(csv_path).parent.mkdir(parents=True, exist_ok=True)
     with open(csv_path, "w", newline="", encoding="utf8") as file_obj:
-        writer = csv.DictWriter(file_obj, fieldnames=fields)
+        writer = csv.DictWriter(file_obj, fieldnames=list(BenchmarkResult.__dataclass_fields__.keys()))
         writer.writeheader()
         for row in results:
             writer.writerow(row.__dict__)
@@ -895,14 +1200,19 @@ def _metric_label(metric: str) -> str:
     return labels.get(metric, metric)
 
 
+def _scenario_title(scenario: str) -> str:
+    sweep, workflow = scenario.split("__", maxsplit=1)
+    sweep_text = sweep.replace("DC_", "").replace("_", " ").title()
+    workflow_text = WORKFLOW_DEFS[workflow]["label"]
+    return f"{sweep_text}: {workflow_text}"
+
+
 def _plot_single_sweep(
     results: list[BenchmarkResult],
     scenario: str,
     x_field: str,
     metric: str,
     output_dir: str,
-    title: str,
-    xlabel: str,
 ) -> str | None:
     try:
         import matplotlib.pyplot as plt
@@ -910,19 +1220,24 @@ def _plot_single_sweep(
         print("\nSkipping plots: matplotlib is not installed in this environment.")
         return None
 
-    out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
     scenario_rows = [r for r in results if r.scenario == scenario]
     if not scenario_rows:
         return None
 
-    candidates = sorted({r.candidate for r in scenario_rows})
-    fig, ax = plt.subplots(figsize=(10, 6))
-    drew_any = False
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    for candidate in candidates:
-        candidate_rows = [r for r in scenario_rows if r.candidate == candidate]
+    fig, ax = plt.subplots(figsize=(11, 6))
+    drew_any = False
+    labels = sorted({f"{r.candidate} [{r.draw_structure}]" for r in scenario_rows})
+    for label in labels:
+        candidate_name, _, structure = label.partition(" [")
+        structure = structure.rstrip("]")
+        candidate_rows = [
+            r
+            for r in scenario_rows
+            if r.candidate == candidate_name and r.draw_structure == structure
+        ]
         points: list[tuple[int, float]] = []
         for row in candidate_rows:
             y = getattr(row, metric)
@@ -930,188 +1245,95 @@ def _plot_single_sweep(
                 continue
             x = getattr(row, x_field)
             points.append((int(x), float(y)))
-
         points.sort(key=lambda p: p[0])
         if len(points) < 2:
             continue
-
         xs, ys = zip(*points)
-        ax.plot(xs, ys, marker="o", linewidth=1.8, markersize=4, label=candidate)
+        ax.plot(xs, ys, marker="o", linewidth=1.8, markersize=4, label=label)
         drew_any = True
 
     if not drew_any:
         plt.close(fig)
         return None
 
-    ax.set_title(title)
-    ax.set_xlabel(xlabel)
+    ax.set_title(_scenario_title(scenario))
+    ax.set_xlabel(x_field.replace("_", " ").title())
     ax.set_ylabel(_metric_label(metric))
     ax.grid(True, alpha=0.3)
     ax.legend(loc="best", fontsize=8)
     fig.tight_layout()
 
-    file_name = f"{_sanitize_filename(scenario)}__{metric}__vs_{x_field}.png"
-    save_path = out_dir / file_name
+    save_path = out_dir / f"{_sanitize_filename(scenario)}__{metric}__vs_{x_field}.png"
     fig.savefig(save_path, dpi=150)
     plt.close(fig)
-
     return str(save_path)
 
 
-def plot_location_choice_sweeps(
+def plot_destination_choice_sweeps(
     results: list[BenchmarkResult],
     output_dir: str,
     metric: str = "mean_seconds",
 ) -> list[str]:
     saved_paths: list[str] = []
-
-    reseed_rows = [r for r in results if r.scenario == "LC_reseed_sweep"]
-    fixed_draws = (
-        sorted({int(r.draws_per_reseed) for r in reseed_rows}) if reseed_rows else []
-    )
-    fixed_draws_text = (
-        str(fixed_draws[0])
-        if len(fixed_draws) == 1
-        else ",".join(map(str, fixed_draws))
-    )
-
-    reseed_plot = _plot_single_sweep(
-        results=results,
-        scenario="LC_reseed_sweep",
-        x_field="rows",
-        metric=metric,
-        output_dir=output_dir,
-        title=f"Runtime vs Number of Reseeds (Fixed draws per reseed = {fixed_draws_text})",
-        xlabel="Number of Reseeds",
-    )
-    if reseed_plot:
-        saved_paths.append(reseed_plot)
-
-    draw_rows = [r for r in results if r.scenario == "LC_draw_sweep"]
-    fixed_reseeds = sorted({int(r.rows) for r in draw_rows}) if draw_rows else []
-    fixed_reseeds_text = (
-        str(fixed_reseeds[0])
-        if len(fixed_reseeds) == 1
-        else ",".join(map(str, fixed_reseeds))
-    )
-
-    draw_plot = _plot_single_sweep(
-        results=results,
-        scenario="LC_draw_sweep",
-        x_field="draws_per_reseed",
-        metric=metric,
-        output_dir=output_dir,
-        title=f"Runtime vs Draws per Reseed (Fixed reseeds = {fixed_reseeds_text})",
-        xlabel="Draws per Reseed",
-    )
-    if draw_plot:
-        saved_paths.append(draw_plot)
-
-    return saved_paths
-
-
-def select_candidates(settings: dict) -> list[RNGCandidate]:
-    candidate_map = available_candidates()
-    requested = settings.get("candidates", "all")
-
-    if isinstance(requested, str) and requested.lower() == "all":
-        return list(candidate_map.values())
-
-    if not isinstance(requested, list):
-        raise ValueError("RUN_SETTINGS['candidates'] must be 'all' or a list of names")
-
-    missing = [name for name in requested if name not in candidate_map]
-    if missing:
-        raise ValueError(
-            f"Unknown candidate names in RUN_SETTINGS['candidates']: {missing}"
+    for scenario in sorted({r.scenario for r in results}):
+        scenario_rows = [r for r in results if r.scenario == scenario]
+        if not scenario_rows:
+            continue
+        x_field = scenario_rows[0].x_field
+        save_path = _plot_single_sweep(
+            results=results,
+            scenario=scenario,
+            x_field=x_field,
+            metric=metric,
+            output_dir=output_dir,
         )
-
-    return [candidate_map[name] for name in requested]
-
-
-def _deep_update(base: dict, updates: dict) -> dict:
-    for key, value in updates.items():
-        if isinstance(value, dict) and isinstance(base.get(key), dict):
-            _deep_update(base[key], value)
-        else:
-            base[key] = value
-    return base
-
-
-def resolve_run_settings(settings: dict) -> dict:
-    resolved = deepcopy(settings)
-    profile = str(resolved.get("run_profile", "full")).strip().lower()
-
-    if profile not in RUN_PROFILES:
-        valid = ", ".join(sorted(RUN_PROFILES.keys()))
-        raise ValueError(f"Unknown run_profile '{profile}'. Valid options: {valid}")
-
-    return _deep_update(resolved, RUN_PROFILES[profile])
+        if save_path:
+            saved_paths.append(save_path)
+    return saved_paths
 
 
 def main() -> None:
     settings = resolve_run_settings(RUN_SETTINGS)
     print(f"Using run profile: {settings.get('run_profile', 'full')}")
     run_mode = str(settings.get("run_mode", "benchmark")).strip().lower()
-    valid_run_modes = {"benchmark", "seed_unit_test", "both"}
+    valid_run_modes = {"benchmark", "seed_unit_test", "workflow_unit_test", "checks", "both"}
     if run_mode not in valid_run_modes:
         valid = ", ".join(sorted(valid_run_modes))
         raise ValueError(f"Unknown run_mode '{run_mode}'. Valid options: {valid}")
 
     print(f"Using run mode: {run_mode}")
     candidates = select_candidates(settings)
-    repeat = int(settings.get("repeat", 5))
+    repeat = int(settings.get("repeat", 3))
 
-    if run_mode in {"seed_unit_test", "both"}:
-        all_passed = run_seed_invariance_unit_tests(settings, candidates)
+    seed_tests_passed = True
+    if run_mode in {"seed_unit_test", "checks", "both"}:
+        seed_tests_passed = run_seed_invariance_unit_tests(settings, candidates)
         if run_mode == "seed_unit_test":
-            if not all_passed:
+            if not seed_tests_passed:
                 raise SystemExit(1)
             return
 
+    workflow_tests_passed = True
+    if bool(settings.get("run_workflow_check", True)) and run_mode in {"workflow_unit_test", "checks", "both"}:
+        workflow_tests_passed = run_workflow_unit_tests(settings, candidates)
+        if run_mode == "workflow_unit_test":
+            if not workflow_tests_passed:
+                raise SystemExit(1)
+            return
+
+    if run_mode == "checks":
+        if not (seed_tests_passed and workflow_tests_passed):
+            raise SystemExit(1)
+        return
+
     results: list[BenchmarkResult] = []
-
-    reseed_sweep = settings.get("reseed_sweep", {})
-    if reseed_sweep.get("enabled", True):
-        draws_fixed = int(reseed_sweep.get("draws_per_reseed", 10))
-        offset = int(reseed_sweep.get("offset", 0))
-        for reseeds in [int(v) for v in reseed_sweep.get("reseeds", [])]:
-            for candidate in candidates:
-                print(
-                    f"Testing candidate: {candidate.name} [reseed_sweep reseeds={reseeds}, draws_per_reseed={draws_fixed}]",
-                    flush=True,
-                )
-                results.append(
-                    benchmark_location_choice_reseed_sweep(
-                        candidate=candidate,
-                        reseeds=reseeds,
-                        draws_per_reseed=draws_fixed,
-                        repeat=repeat,
-                        offset=offset,
-                    )
-                )
-
-    draw_sweep = settings.get("draw_sweep", {})
-    if draw_sweep.get("enabled", True):
-        reseeds_fixed = int(draw_sweep.get("reseeds", 100))
-        offset = int(draw_sweep.get("offset", 0))
-        for draws_per_reseed in [
-            int(v) for v in draw_sweep.get("draws_per_reseed", [])
-        ]:
-            for candidate in candidates:
-                print(
-                    f"Testing candidate: {candidate.name} [draw_sweep reseeds={reseeds_fixed}, draws_per_reseed={draws_per_reseed}]",
-                    flush=True,
-                )
-                results.append(
-                    benchmark_location_choice_draw_sweep(
-                        candidate=candidate,
-                        reseeds=reseeds_fixed,
-                        draws_per_reseed=draws_per_reseed,
-                        repeat=repeat,
-                        offset=offset,
-                    )
-                )
+    for spec in iter_destination_choice_specs(settings):
+        for candidate in candidates:
+            print(
+                f"Testing candidate: {candidate.name} [{spec.scenario}, structure={spec.draw_structure}, choosers={spec.chooser_count}, sample={spec.sample_size}, max_maz={spec.max_maz_count}]",
+                flush=True,
+            )
+            results.append(benchmark_destination_choice(candidate, spec, repeat))
 
     print_results(results)
 
@@ -1122,7 +1344,7 @@ def main() -> None:
 
     plot_settings = settings.get("plots", {})
     if plot_settings.get("enabled", False):
-        plot_files = plot_location_choice_sweeps(
+        plot_files = plot_destination_choice_sweeps(
             results=results,
             output_dir=str(plot_settings.get("output_dir", "benchmark_rng_plots")),
             metric=str(plot_settings.get("metric", "mean_seconds")),
@@ -1132,15 +1354,13 @@ def main() -> None:
                 f"\nWrote {len(plot_files)} plot files to: {plot_settings.get('output_dir', 'benchmark_rng_plots')}"
             )
         else:
-            print(
-                "\nNo plots were created (insufficient x-axis variation or plotting unavailable)."
-            )
+            print("\nNo plots were created (insufficient x-axis variation or plotting unavailable).")
 
     if bool(settings.get("run_repro_check", True)):
         print("\nReproducibility checks")
         print("-" * 80)
         for candidate in candidates:
-            ok, msg = reproducibility_check(candidate)
+            _ok, msg = reproducibility_check(candidate)
             print(f"{candidate.name:22} {msg}")
 
     if bool(settings.get("run_quality_check", True)):
