@@ -368,7 +368,9 @@ class VectorizedChooserHashCandidate(RNGCandidate):
         return state, z
 
     def _uniform_matrix(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
-        offset_state = np.uint64((int(offset) * int(self._GOLDEN_GAMMA)) & ((1 << 64) - 1))
+        offset_state = np.uint64(
+            (int(offset) * int(self._GOLDEN_GAMMA)) & ((1 << 64) - 1)
+        )
         state = (seeds.astype(np.uint64) + offset_state) & self._MASK
         out = np.empty((len(seeds), n), dtype=np.float64)
         for j in range(n):
@@ -391,8 +393,12 @@ def available_candidates() -> dict[str, RNGCandidate]:
         "RandomState": LegacyRandomStateCandidate(),
         "GeneratorPCG64": GeneratorBitGenCandidate(np.random.PCG64, "GeneratorPCG64"),
         "GeneratorSFC64": GeneratorBitGenCandidate(np.random.SFC64, "GeneratorSFC64"),
-        "GeneratorPhilox": GeneratorBitGenCandidate(np.random.Philox, "GeneratorPhilox"),
-        "GeneratorMT19937": GeneratorBitGenCandidate(np.random.MT19937, "GeneratorMT19937"),
+        "GeneratorPhilox": GeneratorBitGenCandidate(
+            np.random.Philox, "GeneratorPhilox"
+        ),
+        "GeneratorMT19937": GeneratorBitGenCandidate(
+            np.random.MT19937, "GeneratorMT19937"
+        ),
         "PhiloxAdvance": PhiloxAdvanceCandidate(),
         "VectorizedChooserHash": VectorizedChooserHashCandidate(),
     }
@@ -470,7 +476,9 @@ def build_destination_context(spec: DestinationChoiceSpec) -> DestinationChoiceC
     taz_prob_cdf = np.cumsum(taz_probs)
     taz_prob_cdf[-1] = 1.0
 
-    taz_sample_utilities = np.log(taz_probs + 1e-12) * 0.75 + 0.05 * np.cos(taz_idx / 5.0)
+    taz_sample_utilities = np.log(taz_probs + 1e-12) * 0.75 + 0.05 * np.cos(
+        taz_idx / 5.0
+    )
 
     maz_counts = _build_maz_counts(spec.taz_count, spec.max_maz_count, spec.maz_shape)
     total_maz_ids = int(maz_counts.sum())
@@ -480,7 +488,9 @@ def build_destination_context(spec: DestinationChoiceSpec) -> DestinationChoiceC
             f"need at least {total_maz_ids}, got {spec.dense_alt_count}"
         )
 
-    maz_weights_padded = np.zeros((spec.taz_count, spec.max_maz_count), dtype=np.float64)
+    maz_weights_padded = np.zeros(
+        (spec.taz_count, spec.max_maz_count), dtype=np.float64
+    )
     maz_id_lookup = np.full((spec.taz_count, spec.max_maz_count), -1, dtype=np.int64)
     maz_weight_lists: list[np.ndarray] = []
     maz_id_lists: list[np.ndarray] = []
@@ -501,7 +511,9 @@ def build_destination_context(spec: DestinationChoiceSpec) -> DestinationChoiceC
         maz_id_lists.append(ids)
 
     dense_idx = np.arange(spec.dense_alt_count, dtype=np.float64)
-    dense_alt_utilities = 0.15 * np.sin((dense_idx + 1.0) / 13.0) + 0.05 * np.log1p(dense_idx)
+    dense_alt_utilities = 0.15 * np.sin((dense_idx + 1.0) / 13.0) + 0.05 * np.log1p(
+        dense_idx
+    )
 
     return DestinationChoiceContext(
         taz_prob_cdf=taz_prob_cdf,
@@ -592,7 +604,9 @@ def _choose_maz_dense(
         max_selected = int(context.maz_counts[flat_taz].max())
         weights = context.maz_weights_padded[flat_taz, :max_selected]
         cdf = np.cumsum(weights, axis=1)
-        draws = candidate.draw_uniform(seeds, n=sample_size, offset=offset).reshape(-1, 1)
+        draws = candidate.draw_uniform(seeds, n=sample_size, offset=offset).reshape(
+            -1, 1
+        )
         positions = np.argmax((cdf - draws) > 0.0, axis=1)
         sampled_maz[:] = context.maz_id_lookup[flat_taz, positions].reshape(
             chooser_count, sample_size
@@ -858,8 +872,12 @@ def workflow_invariance_unit_test(
 ) -> WorkflowUnitTestResult:
     target_seed = np.uint32(987654321)
     solo = np.asarray([target_seed], dtype=np.uint32)
-    batch_a = np.asarray([111111111, target_seed, 222222222, 333333333], dtype=np.uint32)
-    batch_b = np.asarray([333333333, 222222222, target_seed, 111111111], dtype=np.uint32)
+    batch_a = np.asarray(
+        [111111111, target_seed, 222222222, 333333333], dtype=np.uint32
+    )
+    batch_b = np.asarray(
+        [333333333, 222222222, target_seed, 111111111], dtype=np.uint32
+    )
     spec = DestinationChoiceSpec(
         scenario="workflow_check",
         x_field="chooser_count",
@@ -933,7 +951,9 @@ def workflow_structure_equivalence_unit_test(
     for draw_structure in ["batched", "serial", "ragged"]:
         spec = DestinationChoiceSpec(draw_structure=draw_structure, **base_kwargs)
         context = build_destination_context(spec)
-        outputs[draw_structure] = execute_destination_workflow(candidate, spec, context, seeds)
+        outputs[draw_structure] = execute_destination_workflow(
+            candidate, spec, context, seeds
+        )
 
     baseline = outputs["batched"]
     passed = True
@@ -947,7 +967,11 @@ def workflow_structure_equivalence_unit_test(
         if output.end_offset != baseline.end_offset:
             passed = False
 
-    message = "draw structures agree on staged results" if passed else "draw structures diverged"
+    message = (
+        "draw structures agree on staged results"
+        if passed
+        else "draw structures diverged"
+    )
     return WorkflowUnitTestResult(
         candidate=candidate.name,
         workflow=workflow,
@@ -1049,20 +1073,30 @@ def seed_invariance_unit_test(
 ) -> SeedUnitTestResult:
     target_seed = np.uint32(987654321)
     solo = np.asarray([target_seed], dtype=np.uint32)
-    batch_a = np.asarray([111111111, target_seed, 222222222, 333333333], dtype=np.uint32)
-    batch_b = np.asarray([333333333, 222222222, target_seed, 111111111], dtype=np.uint32)
+    batch_a = np.asarray(
+        [111111111, target_seed, 222222222, 333333333], dtype=np.uint32
+    )
+    batch_b = np.asarray(
+        [333333333, 222222222, target_seed, 111111111], dtype=np.uint32
+    )
 
     solo_draw = candidate.draw_uniform(solo, n=draws_per_seed, offset=offset)[0]
     idx_a = int(np.where(batch_a == target_seed)[0][0])
     idx_b = int(np.where(batch_b == target_seed)[0][0])
-    batch_a_draw = candidate.draw_uniform(batch_a, n=draws_per_seed, offset=offset)[idx_a]
-    batch_b_draw = candidate.draw_uniform(batch_b, n=draws_per_seed, offset=offset)[idx_b]
+    batch_a_draw = candidate.draw_uniform(batch_a, n=draws_per_seed, offset=offset)[
+        idx_a
+    ]
+    batch_b_draw = candidate.draw_uniform(batch_b, n=draws_per_seed, offset=offset)[
+        idx_b
+    ]
 
     same_a = np.array_equal(solo_draw, batch_a_draw)
     same_b = np.array_equal(solo_draw, batch_b_draw)
     passed = bool(same_a and same_b)
     if passed:
-        message = "PASS: target chooser draws are invariant to batch membership and order"
+        message = (
+            "PASS: target chooser draws are invariant to batch membership and order"
+        )
     else:
         message = (
             "FAIL: target chooser draws changed with batch membership/order "
@@ -1072,7 +1106,9 @@ def seed_invariance_unit_test(
     return SeedUnitTestResult(candidate=candidate.name, passed=passed, message=message)
 
 
-def run_seed_invariance_unit_tests(settings: dict, candidates: list[RNGCandidate]) -> bool:
+def run_seed_invariance_unit_tests(
+    settings: dict, candidates: list[RNGCandidate]
+) -> bool:
     draws_per_seed = int(settings.get("seed_unit_test_draws", 16))
     offset = int(settings.get("seed_unit_test_offset", 7))
     print("\nSeed invariance unit tests")
@@ -1080,7 +1116,9 @@ def run_seed_invariance_unit_tests(settings: dict, candidates: list[RNGCandidate
     print(f"Test config: draws_per_seed={draws_per_seed}, offset={offset}")
     all_passed = True
     for candidate in candidates:
-        result = seed_invariance_unit_test(candidate, draws_per_seed=draws_per_seed, offset=offset)
+        result = seed_invariance_unit_test(
+            candidate, draws_per_seed=draws_per_seed, offset=offset
+        )
         status = "PASS" if result.passed else "FAIL"
         print(f"{result.candidate:22} {status:4} {result.message}")
         all_passed = all_passed and result.passed
@@ -1110,7 +1148,9 @@ def iter_destination_choice_specs(settings: dict) -> list[DestinationChoiceSpec]
                             taz_count=int(chooser_sweep.get("taz_count", 128)),
                             sample_size=int(chooser_sweep.get("sample_size", 12)),
                             max_maz_count=int(chooser_sweep.get("max_maz_count", 24)),
-                            dense_alt_count=int(chooser_sweep.get("dense_alt_count", 4096)),
+                            dense_alt_count=int(
+                                chooser_sweep.get("dense_alt_count", 4096)
+                            ),
                             maz_shape=maz_shape,
                             serial_dense_eet_block=serial_dense_eet_block,
                         )
@@ -1131,7 +1171,9 @@ def iter_destination_choice_specs(settings: dict) -> list[DestinationChoiceSpec]
                             taz_count=int(sample_sweep.get("taz_count", 128)),
                             sample_size=sample_size,
                             max_maz_count=int(sample_sweep.get("max_maz_count", 24)),
-                            dense_alt_count=int(sample_sweep.get("dense_alt_count", 4096)),
+                            dense_alt_count=int(
+                                sample_sweep.get("dense_alt_count", 4096)
+                            ),
                             maz_shape=maz_shape,
                             serial_dense_eet_block=serial_dense_eet_block,
                         )
@@ -1180,7 +1222,9 @@ def print_results(results: list[BenchmarkResult]) -> None:
 def write_csv(results: list[BenchmarkResult], csv_path: str) -> None:
     Path(csv_path).parent.mkdir(parents=True, exist_ok=True)
     with open(csv_path, "w", newline="", encoding="utf8") as file_obj:
-        writer = csv.DictWriter(file_obj, fieldnames=list(BenchmarkResult.__dataclass_fields__.keys()))
+        writer = csv.DictWriter(
+            file_obj, fieldnames=list(BenchmarkResult.__dataclass_fields__.keys())
+        )
         writer.writeheader()
         for row in results:
             writer.writerow(row.__dict__)
@@ -1296,7 +1340,13 @@ def main() -> None:
     settings = resolve_run_settings(RUN_SETTINGS)
     print(f"Using run profile: {settings.get('run_profile', 'full')}")
     run_mode = str(settings.get("run_mode", "benchmark")).strip().lower()
-    valid_run_modes = {"benchmark", "seed_unit_test", "workflow_unit_test", "checks", "both"}
+    valid_run_modes = {
+        "benchmark",
+        "seed_unit_test",
+        "workflow_unit_test",
+        "checks",
+        "both",
+    }
     if run_mode not in valid_run_modes:
         valid = ", ".join(sorted(valid_run_modes))
         raise ValueError(f"Unknown run_mode '{run_mode}'. Valid options: {valid}")
@@ -1314,7 +1364,11 @@ def main() -> None:
             return
 
     workflow_tests_passed = True
-    if bool(settings.get("run_workflow_check", True)) and run_mode in {"workflow_unit_test", "checks", "both"}:
+    if bool(settings.get("run_workflow_check", True)) and run_mode in {
+        "workflow_unit_test",
+        "checks",
+        "both",
+    }:
         workflow_tests_passed = run_workflow_unit_tests(settings, candidates)
         if run_mode == "workflow_unit_test":
             if not workflow_tests_passed:
@@ -1354,7 +1408,9 @@ def main() -> None:
                 f"\nWrote {len(plot_files)} plot files to: {plot_settings.get('output_dir', 'benchmark_rng_plots')}"
             )
         else:
-            print("\nNo plots were created (insufficient x-axis variation or plotting unavailable).")
+            print(
+                "\nNo plots were created (insufficient x-axis variation or plotting unavailable)."
+            )
 
     if bool(settings.get("run_repro_check", True)):
         print("\nReproducibility checks")

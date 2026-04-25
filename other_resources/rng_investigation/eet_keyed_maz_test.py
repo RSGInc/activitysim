@@ -315,7 +315,9 @@ class KeyedBitGeneratorEngine(ShockEngine):
         out = np.empty(sampled_alt_ids.shape, dtype=np.float64)
         for row_idx, row_seed in enumerate(row_seeds):
             for col_idx, alt_id in enumerate(sampled_alt_ids[row_idx]):
-                pair_seed = _pair_seed(int(row_seed), int(alt_id), stream_tag=0x51D7348C)
+                pair_seed = _pair_seed(
+                    int(row_seed), int(alt_id), stream_tag=0x51D7348C
+                )
                 out[row_idx, col_idx] = self._draw_one(pair_seed, offset)
         return _uniforms_to_gumbel(out)
 
@@ -368,7 +370,9 @@ def _sample_without_replacement(
         raise ValueError(
             f"sample_size={sample_size} exceeds actual_alt_count={len(actual_alt_ids)}"
         )
-    return np.asarray(rng.choice(actual_alt_ids, size=sample_size, replace=False), dtype=np.int64)
+    return np.asarray(
+        rng.choice(actual_alt_ids, size=sample_size, replace=False), dtype=np.int64
+    )
 
 
 def build_scenario_inputs(spec: ScenarioSpec) -> ScenarioInputs:
@@ -396,9 +400,13 @@ def build_scenario_inputs(spec: ScenarioSpec) -> ScenarioInputs:
         if shared_count:
             sample_b[:shared_count] = sample_a[:shared_count]
         if shared_count < spec.sample_size:
-            remaining = np.setdiff1d(actual_alt_ids, sample_a[:shared_count], assume_unique=True)
+            remaining = np.setdiff1d(
+                actual_alt_ids, sample_a[:shared_count], assume_unique=True
+            )
             new_count = spec.sample_size - shared_count
-            sample_b[shared_count:] = _sample_without_replacement(rng, remaining, new_count)
+            sample_b[shared_count:] = _sample_without_replacement(
+                rng, remaining, new_count
+            )
         rng.shuffle(sample_b)
         sampled_alt_ids_b[chooser_idx] = sample_b
 
@@ -439,8 +447,14 @@ def _shared_pair_match_count(
     checked = 0
     matched = 0
     for row_idx in range(alt_ids_a.shape[0]):
-        map_a = {int(alt): float(shock) for alt, shock in zip(alt_ids_a[row_idx], shocks_a[row_idx])}
-        map_b = {int(alt): float(shock) for alt, shock in zip(alt_ids_b[row_idx], shocks_b[row_idx])}
+        map_a = {
+            int(alt): float(shock)
+            for alt, shock in zip(alt_ids_a[row_idx], shocks_a[row_idx])
+        }
+        map_b = {
+            int(alt): float(shock)
+            for alt, shock in zip(alt_ids_b[row_idx], shocks_b[row_idx])
+        }
         shared = set(map_a).intersection(map_b)
         checked += len(shared)
         matched += sum(map_a[alt] == map_b[alt] for alt in shared)
@@ -497,7 +511,9 @@ def run_invariance_check(
         spec.max_alt_id,
         offset=0,
     )
-    offset_changes_values = True if offset == 0 else not np.array_equal(baseline_shocks, shocks_a)
+    offset_changes_values = (
+        True if offset == 0 else not np.array_equal(baseline_shocks, shocks_a)
+    )
     message = (
         f"offset={offset}; shared_pairs={checked}; batch_invariant={batch_invariant}; "
         f"sampled_set_invariant={sampled_set_invariant}; offset_changes_values={offset_changes_values}"
@@ -554,7 +570,9 @@ def _make_kernel_result(
         std_seconds=std_seconds,
         peak_memory_mb=peak_bytes / (1024 * 1024),
         useful_shocks_per_sec=(0.0 if mean_seconds <= 0 else useful / mean_seconds),
-        generated_shocks_per_sec=(0.0 if mean_seconds <= 0 else generated / mean_seconds),
+        generated_shocks_per_sec=(
+            0.0 if mean_seconds <= 0 else generated / mean_seconds
+        ),
     )
 
 
@@ -602,7 +620,9 @@ def write_results_csv(results: list[KernelResult], output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = output_dir / "eet_keyed_maz_test_results.csv"
     with csv_path.open("w", newline="", encoding="utf8") as file_obj:
-        writer = csv.DictWriter(file_obj, fieldnames=list(KernelResult.__dataclass_fields__.keys()))
+        writer = csv.DictWriter(
+            file_obj, fieldnames=list(KernelResult.__dataclass_fields__.keys())
+        )
         writer.writeheader()
         for result in results:
             writer.writerow(asdict(result))
@@ -613,7 +633,9 @@ def write_invariance_csv(results: list[InvarianceResult], output_dir: Path) -> P
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = output_dir / "eet_keyed_maz_test_invariance.csv"
     with csv_path.open("w", newline="", encoding="utf8") as file_obj:
-        writer = csv.DictWriter(file_obj, fieldnames=list(InvarianceResult.__dataclass_fields__.keys()))
+        writer = csv.DictWriter(
+            file_obj, fieldnames=list(InvarianceResult.__dataclass_fields__.keys())
+        )
         writer.writeheader()
         for result in results:
             writer.writerow(asdict(result))
@@ -645,12 +667,16 @@ def write_summary_markdown(
             if subset.empty:
                 continue
             baseline = subset[subset["engine"] == "current_dense"][
-            ["scenario", "mean_seconds"]
+                ["scenario", "mean_seconds"]
             ].rename(columns={"mean_seconds": "baseline_seconds"})
             merged = subset.merge(baseline, on="scenario", how="left")
-            merged["speedup_vs_current"] = merged["baseline_seconds"] / merged["mean_seconds"]
+            merged["speedup_vs_current"] = (
+                merged["baseline_seconds"] / merged["mean_seconds"]
+            )
             summary = (
-                merged.groupby(["strategy_label", "offset"], as_index=False)["speedup_vs_current"]
+                merged.groupby(["strategy_label", "offset"], as_index=False)[
+                    "speedup_vs_current"
+                ]
                 .mean()
                 .round(3)
             )
@@ -736,7 +762,9 @@ def _plot_metric(
 
     fig, ax = plt.subplots(figsize=(10.5, 6.0))
     for strategy_label in subset["strategy_label"].drop_duplicates().tolist():
-        option_rows = subset[subset["strategy_label"] == strategy_label].sort_values(x_field)
+        option_rows = subset[subset["strategy_label"] == strategy_label].sort_values(
+            x_field
+        )
         ax.plot(
             option_rows[x_field],
             option_rows[y_field],
@@ -748,7 +776,9 @@ def _plot_metric(
 
     title_metric = y_field.replace("_", " ")
     title_x = x_field.replace("_", " ")
-    ax.set_title(f"{suite.replace('_', ' ').title()} | {kernel.replace('_', ' ')} | {title_metric}")
+    ax.set_title(
+        f"{suite.replace('_', ' ').title()} | {kernel.replace('_', ' ')} | {title_metric}"
+    )
     ax.set_xlabel(title_x)
     ax.set_ylabel(title_metric)
     ax.grid(True, alpha=0.3)
@@ -761,14 +791,16 @@ def _plot_metric(
     return save_path
 
 
-def _plot_speedup(df: pd.DataFrame, suite: str, kernel: str, x_field: str, output_dir: Path) -> Path | None:
+def _plot_speedup(
+    df: pd.DataFrame, suite: str, kernel: str, x_field: str, output_dir: Path
+) -> Path | None:
     plt = _safe_import_matplotlib()
     if plt is None:
         return None
     subset = df[(df["suite"] == suite) & (df["kernel"] == kernel)].copy()
-    baseline = subset[subset["engine"] == "current_dense"][[x_field, "mean_seconds"]].rename(
-        columns={"mean_seconds": "baseline_seconds"}
-    )
+    baseline = subset[subset["engine"] == "current_dense"][
+        [x_field, "mean_seconds"]
+    ].rename(columns={"mean_seconds": "baseline_seconds"})
     merged = subset.merge(baseline, on=x_field, how="left")
     merged["speedup_vs_current"] = merged["baseline_seconds"] / merged["mean_seconds"]
     merged = merged[merged["engine"] != "current_dense"]
@@ -778,7 +810,9 @@ def _plot_speedup(df: pd.DataFrame, suite: str, kernel: str, x_field: str, outpu
     output_dir.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(10.5, 6.0))
     for strategy_label in merged["strategy_label"].drop_duplicates().tolist():
-        option_rows = merged[merged["strategy_label"] == strategy_label].sort_values(x_field)
+        option_rows = merged[merged["strategy_label"] == strategy_label].sort_values(
+            x_field
+        )
         ax.plot(
             option_rows[x_field],
             option_rows["speedup_vs_current"],
@@ -789,7 +823,9 @@ def _plot_speedup(df: pd.DataFrame, suite: str, kernel: str, x_field: str, outpu
         )
 
     ax.axhline(1.0, color="black", linestyle="--", linewidth=1.0)
-    ax.set_title(f"{suite.replace('_', ' ').title()} | {kernel.replace('_', ' ')} | speedup vs current dense")
+    ax.set_title(
+        f"{suite.replace('_', ' ').title()} | {kernel.replace('_', ' ')} | speedup vs current dense"
+    )
     ax.set_xlabel(x_field.replace("_", " "))
     ax.set_ylabel("speedup vs current dense")
     ax.grid(True, alpha=0.3)
@@ -899,7 +935,9 @@ def make_profile(profile: str) -> tuple[list[ScenarioSpec], int]:
     return scenarios, repeat
 
 
-def print_results(results: list[KernelResult], invariance_results: list[InvarianceResult]) -> None:
+def print_results(
+    results: list[KernelResult], invariance_results: list[InvarianceResult]
+) -> None:
     header = (
         f"{'Scenario':16} {'Kernel':13} {'Strategy':28} {'Offset':>8} {'Choosers':>9} {'Sparse':>8} "
         f"{'Mean(s)':>10} {'PeakMB':>9} {'Waste':>8} {'Useful/s':>12}"
@@ -917,7 +955,9 @@ def print_results(results: list[KernelResult], invariance_results: list[Invarian
     for result in invariance_results:
         status = (
             "PASS"
-            if result.batch_invariant and result.sampled_set_invariant and result.offset_changes_values
+            if result.batch_invariant
+            and result.sampled_set_invariant
+            and result.offset_changes_values
             else "FAIL"
         )
         print(f"{result.strategy_label:28} {status:4} {result.message}")
@@ -975,7 +1015,9 @@ def main() -> None:
     invariance_results: list[InvarianceResult] = []
     for offset in [0, 16]:
         invariance_results.extend(
-            run_invariance_check(engine, invariance_inputs, invariance_spec, offset=offset)
+            run_invariance_check(
+                engine, invariance_inputs, invariance_spec, offset=offset
+            )
             for engine in engines
         )
 

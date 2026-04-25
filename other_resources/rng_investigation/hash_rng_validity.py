@@ -186,11 +186,17 @@ def _softmax(values: np.ndarray) -> np.ndarray:
 
 def _make_sparse_alt_ids(alt_count: int, max_alt_id: int) -> np.ndarray:
     rng = np.random.Generator(np.random.PCG64(1234567 + max_alt_id + alt_count))
-    values = np.sort(rng.choice(np.arange(1, max_alt_id + 1, dtype=np.int64), size=alt_count, replace=False))
+    values = np.sort(
+        rng.choice(
+            np.arange(1, max_alt_id + 1, dtype=np.int64), size=alt_count, replace=False
+        )
+    )
     return values.astype(np.int64)
 
 
-def _build_sampled_sets(spec: InvarianceSpec) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def _build_sampled_sets(
+    spec: InvarianceSpec,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     actual_alt_ids = _make_sparse_alt_ids(spec.actual_alt_count, spec.max_alt_id)
     rng = np.random.Generator(np.random.PCG64(24681357 + spec.max_alt_id))
     shared_count = int(round(spec.sample_size * spec.overlap_ratio))
@@ -199,7 +205,10 @@ def _build_sampled_sets(spec: InvarianceSpec) -> tuple[np.ndarray, np.ndarray, n
     sampled_b = np.empty((spec.chooser_count, spec.sample_size), dtype=np.int64)
 
     for row in range(spec.chooser_count):
-        sample_a = np.asarray(rng.choice(actual_alt_ids, size=spec.sample_size, replace=False), dtype=np.int64)
+        sample_a = np.asarray(
+            rng.choice(actual_alt_ids, size=spec.sample_size, replace=False),
+            dtype=np.int64,
+        )
         rng.shuffle(sample_a)
         sampled_a[row] = sample_a
 
@@ -207,9 +216,13 @@ def _build_sampled_sets(spec: InvarianceSpec) -> tuple[np.ndarray, np.ndarray, n
         if shared_count:
             sample_b[:shared_count] = sample_a[:shared_count]
         if shared_count < spec.sample_size:
-            remaining = np.setdiff1d(actual_alt_ids, sample_a[:shared_count], assume_unique=True)
+            remaining = np.setdiff1d(
+                actual_alt_ids, sample_a[:shared_count], assume_unique=True
+            )
             sample_b[shared_count:] = np.asarray(
-                rng.choice(remaining, size=spec.sample_size - shared_count, replace=False),
+                rng.choice(
+                    remaining, size=spec.sample_size - shared_count, replace=False
+                ),
                 dtype=np.int64,
             )
         rng.shuffle(sample_b)
@@ -223,7 +236,9 @@ def _build_sampled_sets(spec: InvarianceSpec) -> tuple[np.ndarray, np.ndarray, n
 class RNGEngine:
     name = "base"
 
-    def draw_uniform_matrix(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
+    def draw_uniform_matrix(
+        self, seeds: np.ndarray, n: int, offset: int = 0
+    ) -> np.ndarray:
         raise NotImplementedError
 
     def draw_uniform_for_alt_ids(
@@ -235,7 +250,9 @@ class RNGEngine:
     ) -> np.ndarray:
         raise NotImplementedError
 
-    def draw_gumbel_matrix(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
+    def draw_gumbel_matrix(
+        self, seeds: np.ndarray, n: int, offset: int = 0
+    ) -> np.ndarray:
         return _uniforms_to_gumbel(self.draw_uniform_matrix(seeds, n=n, offset=offset))
 
     def draw_gumbel_for_alt_ids(
@@ -246,14 +263,18 @@ class RNGEngine:
         offset: int = 0,
     ) -> np.ndarray:
         return _uniforms_to_gumbel(
-            self.draw_uniform_for_alt_ids(seeds, alt_ids=alt_ids, max_alt_id=max_alt_id, offset=offset)
+            self.draw_uniform_for_alt_ids(
+                seeds, alt_ids=alt_ids, max_alt_id=max_alt_id, offset=offset
+            )
         )
 
 
 class RandomStateEngine(RNGEngine):
     name = "RandomState"
 
-    def draw_uniform_matrix(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
+    def draw_uniform_matrix(
+        self, seeds: np.ndarray, n: int, offset: int = 0
+    ) -> np.ndarray:
         prng = np.random.RandomState()
         out = np.empty((len(seeds), n), dtype=np.float64)
         for row_idx, seed in enumerate(seeds):
@@ -304,9 +325,13 @@ class KeyedHashEngine(RNGEngine):
     def _to_uniform(z: np.ndarray) -> np.ndarray:
         return ((z >> np.uint64(11)).astype(np.float64)) * (1.0 / (1 << 53))
 
-    def draw_uniform_matrix(self, seeds: np.ndarray, n: int, offset: int = 0) -> np.ndarray:
+    def draw_uniform_matrix(
+        self, seeds: np.ndarray, n: int, offset: int = 0
+    ) -> np.ndarray:
         out = np.empty((len(seeds), n), dtype=np.float64)
-        offset_state = np.uint64((int(offset) * int(self._GOLDEN_GAMMA)) & ((1 << 64) - 1))
+        offset_state = np.uint64(
+            (int(offset) * int(self._GOLDEN_GAMMA)) & ((1 << 64) - 1)
+        )
         state = (seeds.astype(np.uint64) + self._SEQ_TAG + offset_state) & _MASK_64
         for col in range(n):
             state, z = self._splitmix64_next(state)
@@ -343,7 +368,9 @@ def run_uniform_test(engine: RNGEngine, spec: UniformTestSpec) -> UniformResult:
         "persons",
         f"hash_rng_validity_uniform::{spec.name}",
     )
-    values = engine.draw_uniform_matrix(seeds, n=spec.draws_per_seed, offset=spec.offset)
+    values = engine.draw_uniform_matrix(
+        seeds, n=spec.draws_per_seed, offset=spec.offset
+    )
     flat = values.reshape(-1)
     expected_mean = 0.5
     expected_variance = 1.0 / 12.0
@@ -356,9 +383,15 @@ def run_uniform_test(engine: RNGEngine, spec: UniformTestSpec) -> UniformResult:
     counts, _ = np.histogram(flat, bins=32, range=(0.0, 1.0))
     expected_count = flat.size / 32.0
     bin_var = expected_count * (1.0 - 1.0 / 32.0)
-    max_bin_z = 0.0 if bin_var <= 0.0 else float(np.max(np.abs(counts - expected_count) / math.sqrt(bin_var)))
+    max_bin_z = (
+        0.0
+        if bin_var <= 0.0
+        else float(np.max(np.abs(counts - expected_count) / math.sqrt(bin_var)))
+    )
     lag1_corr = _safe_corr(values[:, :-1].reshape(-1), values[:, 1:].reshape(-1))
-    adjacent_seed_corr = _safe_corr(values[:-1, :].reshape(-1), values[1:, :].reshape(-1))
+    adjacent_seed_corr = _safe_corr(
+        values[:-1, :].reshape(-1), values[1:, :].reshape(-1)
+    )
     return UniformResult(
         engine=engine.name,
         test_name=spec.name,
@@ -385,11 +418,15 @@ def run_sparse_alt_test(engine: RNGEngine, spec: SparseAltSpec) -> SparseAltResu
     )
     alt_ids = _make_sparse_alt_ids(spec.alt_count, spec.max_alt_id)
     tiled_alt_ids = np.repeat(alt_ids[np.newaxis, :], spec.seed_count, axis=0)
-    values = engine.draw_uniform_for_alt_ids(seeds, alt_ids=tiled_alt_ids, max_alt_id=spec.max_alt_id, offset=spec.offset)
+    values = engine.draw_uniform_for_alt_ids(
+        seeds, alt_ids=tiled_alt_ids, max_alt_id=spec.max_alt_id, offset=spec.offset
+    )
     alt_means = values.mean(axis=0)
     expected_variance = 1.0 / 12.0
     mean_se = math.sqrt(expected_variance / spec.seed_count)
-    max_alt_mean_z = 0.0 if mean_se == 0.0 else float(np.max(np.abs(alt_means - 0.5) / mean_se))
+    max_alt_mean_z = (
+        0.0 if mean_se == 0.0 else float(np.max(np.abs(alt_means - 0.5) / mean_se))
+    )
     return SparseAltResult(
         engine=engine.name,
         test_name=spec.name,
@@ -400,7 +437,9 @@ def run_sparse_alt_test(engine: RNGEngine, spec: SparseAltSpec) -> SparseAltResu
         alt_mean_id_corr=_safe_corr(alt_ids.astype(np.float64), alt_means),
         max_alt_mean_z=max_alt_mean_z,
         alt_mean_std=float(np.std(alt_means, ddof=0)),
-        adjacent_alt_corr=_safe_corr(values[:, :-1].reshape(-1), values[:, 1:].reshape(-1)),
+        adjacent_alt_corr=_safe_corr(
+            values[:, :-1].reshape(-1), values[:, 1:].reshape(-1)
+        ),
         matrix_mean=float(np.mean(values)),
         matrix_variance=float(np.var(values)),
     )
@@ -426,10 +465,17 @@ def _simulate_choice_shares(
             "persons",
             f"hash_rng_validity_choice::{scenario.name}::{layout_name}::{rep}",
         )
-        tiled_alt_ids = np.repeat(alt_ids[np.newaxis, :], scenario.chooser_count, axis=0)
-        shocks = engine.draw_gumbel_for_alt_ids(seeds, alt_ids=tiled_alt_ids, max_alt_id=max_alt_id, offset=scenario.offset)
+        tiled_alt_ids = np.repeat(
+            alt_ids[np.newaxis, :], scenario.chooser_count, axis=0
+        )
+        shocks = engine.draw_gumbel_for_alt_ids(
+            seeds, alt_ids=tiled_alt_ids, max_alt_id=max_alt_id, offset=scenario.offset
+        )
         choices = np.argmax(utilities[np.newaxis, :] + shocks, axis=1)
-        empirical = np.bincount(choices, minlength=len(utilities)).astype(np.float64) / scenario.chooser_count
+        empirical = (
+            np.bincount(choices, minlength=len(utilities)).astype(np.float64)
+            / scenario.chooser_count
+        )
         shares[rep] = empirical
         max_errors.append(float(np.max(np.abs(empirical - expected))))
         tv_distances.append(float(0.5 * np.sum(np.abs(empirical - expected))))
@@ -458,7 +504,9 @@ def run_choice_scenario(
     scenario: ChoiceScenario,
 ) -> tuple[list[ChoiceLayoutResult], ChoiceDriftResult]:
     dense_alt_ids = np.arange(len(scenario.utilities), dtype=np.int64)
-    sparse_alt_ids = _make_sparse_alt_ids(len(scenario.utilities), scenario.sparse_max_alt_id)
+    sparse_alt_ids = _make_sparse_alt_ids(
+        len(scenario.utilities), scenario.sparse_max_alt_id
+    )
     dense_result, dense_shares = _simulate_choice_shares(
         engine,
         scenario,
@@ -495,8 +543,12 @@ def run_invariance_test(engine: RNGEngine, spec: InvarianceSpec) -> InvarianceRe
         "hash_rng_validity_invariance",
     )
     actual_alt_ids, sampled_a, sampled_b, _, _ = _build_sampled_sets(spec)
-    shocks_a = engine.draw_uniform_for_alt_ids(seeds, sampled_a, max_alt_id=spec.max_alt_id, offset=spec.offset)
-    shocks_b = engine.draw_uniform_for_alt_ids(seeds, sampled_b, max_alt_id=spec.max_alt_id, offset=spec.offset)
+    shocks_a = engine.draw_uniform_for_alt_ids(
+        seeds, sampled_a, max_alt_id=spec.max_alt_id, offset=spec.offset
+    )
+    shocks_b = engine.draw_uniform_for_alt_ids(
+        seeds, sampled_b, max_alt_id=spec.max_alt_id, offset=spec.offset
+    )
 
     reversed_shocks = engine.draw_uniform_for_alt_ids(
         seeds[::-1],
@@ -509,8 +561,12 @@ def run_invariance_test(engine: RNGEngine, spec: InvarianceSpec) -> InvarianceRe
     checked = 0
     matched = 0
     for row in range(spec.chooser_count):
-        map_a = {int(alt): float(val) for alt, val in zip(sampled_a[row], shocks_a[row])}
-        map_b = {int(alt): float(val) for alt, val in zip(sampled_b[row], shocks_b[row])}
+        map_a = {
+            int(alt): float(val) for alt, val in zip(sampled_a[row], shocks_a[row])
+        }
+        map_b = {
+            int(alt): float(val) for alt, val in zip(sampled_b[row], shocks_b[row])
+        }
         shared = set(map_a).intersection(map_b)
         checked += len(shared)
         matched += sum(map_a[alt] == map_b[alt] for alt in shared)
@@ -519,7 +575,9 @@ def run_invariance_test(engine: RNGEngine, spec: InvarianceSpec) -> InvarianceRe
     if spec.offset == 0:
         offset_changes_values = True
     else:
-        baseline = engine.draw_uniform_for_alt_ids(seeds, sampled_a, max_alt_id=spec.max_alt_id, offset=0)
+        baseline = engine.draw_uniform_for_alt_ids(
+            seeds, sampled_a, max_alt_id=spec.max_alt_id, offset=0
+        )
         offset_changes_values = not np.array_equal(baseline, shocks_a)
 
     return InvarianceResult(
@@ -536,43 +594,152 @@ def run_invariance_test(engine: RNGEngine, spec: InvarianceSpec) -> InvarianceRe
     )
 
 
-def profile_settings(profile: str) -> tuple[list[UniformTestSpec], list[SparseAltSpec], list[ChoiceScenario], list[InvarianceSpec]]:
+def profile_settings(
+    profile: str,
+) -> tuple[
+    list[UniformTestSpec],
+    list[SparseAltSpec],
+    list[ChoiceScenario],
+    list[InvarianceSpec],
+]:
     normalized = profile.strip().lower()
     if normalized == "fast":
         uniform_specs = [
-            UniformTestSpec("uniform_offset_0", seed_count=1024, draws_per_seed=32, offset=0),
-            UniformTestSpec("uniform_offset_257", seed_count=1024, draws_per_seed=32, offset=257),
+            UniformTestSpec(
+                "uniform_offset_0", seed_count=1024, draws_per_seed=32, offset=0
+            ),
+            UniformTestSpec(
+                "uniform_offset_257", seed_count=1024, draws_per_seed=32, offset=257
+            ),
         ]
         sparse_specs = [
-            SparseAltSpec("sparse_alt_offset_0", seed_count=1024, alt_count=24, max_alt_id=1024, offset=0),
-            SparseAltSpec("sparse_alt_offset_257", seed_count=1024, alt_count=24, max_alt_id=1024, offset=257),
+            SparseAltSpec(
+                "sparse_alt_offset_0",
+                seed_count=1024,
+                alt_count=24,
+                max_alt_id=1024,
+                offset=0,
+            ),
+            SparseAltSpec(
+                "sparse_alt_offset_257",
+                seed_count=1024,
+                alt_count=24,
+                max_alt_id=1024,
+                offset=257,
+            ),
         ]
         choice_scenarios = [
-            ChoiceScenario("balanced_4", chooser_count=5000, replications=4, offset=0, utilities=(0.0, 0.0, 0.0, 0.0), sparse_max_alt_id=512),
-            ChoiceScenario("skewed_4", chooser_count=5000, replications=4, offset=0, utilities=(0.0, 0.4, 1.0, -0.6), sparse_max_alt_id=512),
-            ChoiceScenario("long_tail_8", chooser_count=6000, replications=4, offset=17, utilities=(-1.0, -0.5, -0.1, 0.0, 0.2, 0.4, 0.8, 1.1), sparse_max_alt_id=1024),
+            ChoiceScenario(
+                "balanced_4",
+                chooser_count=5000,
+                replications=4,
+                offset=0,
+                utilities=(0.0, 0.0, 0.0, 0.0),
+                sparse_max_alt_id=512,
+            ),
+            ChoiceScenario(
+                "skewed_4",
+                chooser_count=5000,
+                replications=4,
+                offset=0,
+                utilities=(0.0, 0.4, 1.0, -0.6),
+                sparse_max_alt_id=512,
+            ),
+            ChoiceScenario(
+                "long_tail_8",
+                chooser_count=6000,
+                replications=4,
+                offset=17,
+                utilities=(-1.0, -0.5, -0.1, 0.0, 0.2, 0.4, 0.8, 1.1),
+                sparse_max_alt_id=1024,
+            ),
         ]
         invariance_specs = [
-            InvarianceSpec(chooser_count=24, sample_size=8, actual_alt_count=32, max_alt_id=512, overlap_ratio=0.5, offset=0),
-            InvarianceSpec(chooser_count=24, sample_size=8, actual_alt_count=32, max_alt_id=512, overlap_ratio=0.5, offset=19),
+            InvarianceSpec(
+                chooser_count=24,
+                sample_size=8,
+                actual_alt_count=32,
+                max_alt_id=512,
+                overlap_ratio=0.5,
+                offset=0,
+            ),
+            InvarianceSpec(
+                chooser_count=24,
+                sample_size=8,
+                actual_alt_count=32,
+                max_alt_id=512,
+                overlap_ratio=0.5,
+                offset=19,
+            ),
         ]
     elif normalized == "full":
         uniform_specs = [
-            UniformTestSpec("uniform_offset_0", seed_count=4096, draws_per_seed=64, offset=0),
-            UniformTestSpec("uniform_offset_257", seed_count=4096, draws_per_seed=64, offset=257),
+            UniformTestSpec(
+                "uniform_offset_0", seed_count=4096, draws_per_seed=64, offset=0
+            ),
+            UniformTestSpec(
+                "uniform_offset_257", seed_count=4096, draws_per_seed=64, offset=257
+            ),
         ]
         sparse_specs = [
-            SparseAltSpec("sparse_alt_offset_0", seed_count=4096, alt_count=48, max_alt_id=4096, offset=0),
-            SparseAltSpec("sparse_alt_offset_257", seed_count=4096, alt_count=48, max_alt_id=4096, offset=257),
+            SparseAltSpec(
+                "sparse_alt_offset_0",
+                seed_count=4096,
+                alt_count=48,
+                max_alt_id=4096,
+                offset=0,
+            ),
+            SparseAltSpec(
+                "sparse_alt_offset_257",
+                seed_count=4096,
+                alt_count=48,
+                max_alt_id=4096,
+                offset=257,
+            ),
         ]
         choice_scenarios = [
-            ChoiceScenario("balanced_4", chooser_count=12000, replications=8, offset=0, utilities=(0.0, 0.0, 0.0, 0.0), sparse_max_alt_id=1024),
-            ChoiceScenario("skewed_4", chooser_count=12000, replications=8, offset=0, utilities=(0.0, 0.4, 1.0, -0.6), sparse_max_alt_id=1024),
-            ChoiceScenario("long_tail_8", chooser_count=14000, replications=8, offset=17, utilities=(-1.0, -0.5, -0.1, 0.0, 0.2, 0.4, 0.8, 1.1), sparse_max_alt_id=2048),
+            ChoiceScenario(
+                "balanced_4",
+                chooser_count=12000,
+                replications=8,
+                offset=0,
+                utilities=(0.0, 0.0, 0.0, 0.0),
+                sparse_max_alt_id=1024,
+            ),
+            ChoiceScenario(
+                "skewed_4",
+                chooser_count=12000,
+                replications=8,
+                offset=0,
+                utilities=(0.0, 0.4, 1.0, -0.6),
+                sparse_max_alt_id=1024,
+            ),
+            ChoiceScenario(
+                "long_tail_8",
+                chooser_count=14000,
+                replications=8,
+                offset=17,
+                utilities=(-1.0, -0.5, -0.1, 0.0, 0.2, 0.4, 0.8, 1.1),
+                sparse_max_alt_id=2048,
+            ),
         ]
         invariance_specs = [
-            InvarianceSpec(chooser_count=64, sample_size=12, actual_alt_count=64, max_alt_id=2048, overlap_ratio=0.5, offset=0),
-            InvarianceSpec(chooser_count=64, sample_size=12, actual_alt_count=64, max_alt_id=2048, overlap_ratio=0.5, offset=19),
+            InvarianceSpec(
+                chooser_count=64,
+                sample_size=12,
+                actual_alt_count=64,
+                max_alt_id=2048,
+                overlap_ratio=0.5,
+                offset=0,
+            ),
+            InvarianceSpec(
+                chooser_count=64,
+                sample_size=12,
+                actual_alt_count=64,
+                max_alt_id=2048,
+                overlap_ratio=0.5,
+                offset=19,
+            ),
         ]
     else:
         raise ValueError("profile must be 'fast' or 'full'")
@@ -620,10 +787,24 @@ def _build_report(
     invariance_specs: list[InvarianceSpec],
     profile: str,
 ) -> str:
-    uniform_by_engine = {row.engine: [item for item in uniform_results if item.engine == row.engine] for row in uniform_results}
-    sparse_by_engine = {row.engine: [item for item in sparse_results if item.engine == row.engine] for row in sparse_results}
-    choice_by_engine = {row.engine: [item for item in choice_layout_results if item.engine == row.engine] for row in choice_layout_results}
-    drift_by_engine = {row.engine: [item for item in drift_results if item.engine == row.engine] for row in drift_results}
+    uniform_by_engine = {
+        row.engine: [item for item in uniform_results if item.engine == row.engine]
+        for row in uniform_results
+    }
+    sparse_by_engine = {
+        row.engine: [item for item in sparse_results if item.engine == row.engine]
+        for row in sparse_results
+    }
+    choice_by_engine = {
+        row.engine: [
+            item for item in choice_layout_results if item.engine == row.engine
+        ]
+        for row in choice_layout_results
+    }
+    drift_by_engine = {
+        row.engine: [item for item in drift_results if item.engine == row.engine]
+        for row in drift_results
+    }
 
     def baseline_limit(values: list[float], floor: float, scale: float = 1.5) -> float:
         return max(floor, scale * max(abs(value) for value in values))
@@ -643,7 +824,9 @@ def _build_report(
         for row in hash_invariance
     )
 
-    uniform_lag_limit = baseline_limit([row.lag1_corr for row in baseline_uniform], floor=0.015)
+    uniform_lag_limit = baseline_limit(
+        [row.lag1_corr for row in baseline_uniform], floor=0.015
+    )
     uniform_adjacent_seed_limit = baseline_limit(
         [row.adjacent_seed_corr for row in baseline_uniform],
         floor=0.015,
@@ -658,7 +841,9 @@ def _build_report(
         for row in hash_uniform
     )
 
-    sparse_corr_limit = baseline_limit([row.alt_mean_id_corr for row in baseline_sparse], floor=0.20)
+    sparse_corr_limit = baseline_limit(
+        [row.alt_mean_id_corr for row in baseline_sparse], floor=0.20
+    )
     sparse_adjacent_alt_limit = baseline_limit(
         [row.adjacent_alt_corr for row in baseline_sparse],
         floor=0.015,
@@ -670,8 +855,12 @@ def _build_report(
         for row in hash_sparse
     )
 
-    baseline_choice_error_limit = baseline_limit([row.max_abs_error for row in baseline_choice], floor=0.02)
-    baseline_choice_tv_limit = baseline_limit([row.mean_tv_distance for row in baseline_choice], floor=0.03)
+    baseline_choice_error_limit = baseline_limit(
+        [row.max_abs_error for row in baseline_choice], floor=0.02
+    )
+    baseline_choice_tv_limit = baseline_limit(
+        [row.mean_tv_distance for row in baseline_choice], floor=0.03
+    )
     baseline_drift_limit = baseline_limit(
         [row.max_abs_dense_sparse_drift for row in baseline_drift],
         floor=0.015,
@@ -680,9 +869,13 @@ def _build_report(
         row.max_abs_error <= baseline_choice_error_limit
         and row.mean_tv_distance <= baseline_choice_tv_limit
         for row in hash_choice
-    ) and all(row.max_abs_dense_sparse_drift <= baseline_drift_limit for row in hash_drift)
+    ) and all(
+        row.max_abs_dense_sparse_drift <= baseline_drift_limit for row in hash_drift
+    )
 
-    verdict = "Yes" if invariance_ok and uniform_ok and sparse_ok and choice_ok else "No"
+    verdict = (
+        "Yes" if invariance_ok and uniform_ok and sparse_ok and choice_ok else "No"
+    )
     summary_sentence = (
         "The keyed hash looks statistically valid enough for the ActivitySim use cases exercised here."
         if verdict == "Yes"
@@ -722,7 +915,9 @@ def _build_report(
                 "layout": row.layout,
                 "max_abs_error": _format_float(row.max_abs_error, 4),
                 "mean_tv_distance": _format_float(row.mean_tv_distance, 4),
-                "worst_replication_max_abs_error": _format_float(row.worst_replication_max_abs_error, 4),
+                "worst_replication_max_abs_error": _format_float(
+                    row.worst_replication_max_abs_error, 4
+                ),
             }
         )
     drift_rows = []
@@ -731,8 +926,12 @@ def _build_report(
             {
                 "engine": row.engine,
                 "scenario": row.scenario,
-                "mean_abs_dense_sparse_drift": _format_float(row.mean_abs_dense_sparse_drift, 4),
-                "max_abs_dense_sparse_drift": _format_float(row.max_abs_dense_sparse_drift, 4),
+                "mean_abs_dense_sparse_drift": _format_float(
+                    row.mean_abs_dense_sparse_drift, 4
+                ),
+                "max_abs_dense_sparse_drift": _format_float(
+                    row.max_abs_dense_sparse_drift, 4
+                ),
             }
         )
     invariance_rows = []
@@ -749,7 +948,9 @@ def _build_report(
         )
 
     hash_vs_baseline_choice = []
-    baseline_choice_map = {(row.scenario, row.layout): row for row in choice_by_engine["RandomState"]}
+    baseline_choice_map = {
+        (row.scenario, row.layout): row for row in choice_by_engine["RandomState"]
+    }
     for row in hash_choice:
         baseline = baseline_choice_map[(row.scenario, row.layout)]
         hash_vs_baseline_choice.append(
@@ -757,7 +958,9 @@ def _build_report(
         )
 
     expected_uniform_variance = 1.0 / 12.0
-    expected_alt_mean_std = math.sqrt(expected_uniform_variance / sparse_results[0].seed_count)
+    expected_alt_mean_std = math.sqrt(
+        expected_uniform_variance / sparse_results[0].seed_count
+    )
     uniform_spec_map = {spec.name: spec for spec in uniform_specs}
     sparse_spec_map = {spec.name: spec for spec in sparse_specs}
     choice_spec_map = {spec.name: spec for spec in choice_scenarios}
@@ -772,7 +975,9 @@ def _build_report(
                     "test": spec.name,
                     "engine": "RandomState",
                     "returned_values": _format_int(returned_draws),
-                    "raw_rng_draws": _format_int(spec.seed_count * (spec.draws_per_seed + spec.offset)),
+                    "raw_rng_draws": _format_int(
+                        spec.seed_count * (spec.draws_per_seed + spec.offset)
+                    ),
                     "notes": "offset burns are consumed as real draws before the retained values are returned",
                 },
                 {
@@ -794,7 +999,9 @@ def _build_report(
                     "test": spec.name,
                     "engine": "RandomState",
                     "returned_values": _format_int(returned_draws),
-                    "raw_rng_draws": _format_int(spec.seed_count * (spec.max_alt_id + 1 + spec.offset)),
+                    "raw_rng_draws": _format_int(
+                        spec.seed_count * (spec.max_alt_id + 1 + spec.offset)
+                    ),
                     "notes": "the dense gather path draws the full id span, then gathers the requested sparse ids back out",
                 },
                 {
@@ -812,7 +1019,11 @@ def _build_report(
         spec = choice_spec_map[row.scenario]
         returned_draws = spec.chooser_count * spec.replications * row.alt_count
         if row.engine == "RandomState":
-            raw_rng_draws = spec.chooser_count * spec.replications * (row.max_alt_id + 1 + row.offset)
+            raw_rng_draws = (
+                spec.chooser_count
+                * spec.replications
+                * (row.max_alt_id + 1 + row.offset)
+            )
             note = "RandomState burns the offset and, for sparse layouts, draws the full covered id range"
         else:
             raw_rng_draws = returned_draws
@@ -1026,7 +1237,14 @@ def _build_report(
             "",
             _markdown_table_from_rows(
                 choice_count_rows,
-                ["scenario", "layout", "engine", "returned_values", "raw_rng_draws", "notes"],
+                [
+                    "scenario",
+                    "layout",
+                    "engine",
+                    "returned_values",
+                    "raw_rng_draws",
+                    "notes",
+                ],
             ),
             "",
             "### Invariance tests",
@@ -1040,35 +1258,68 @@ def _build_report(
             "",
             _markdown_table_from_rows(
                 uniform_rows,
-                ["engine", "test", "mean_z", "ks_d", "max_bin_z", "lag1_corr", "adjacent_seed_corr"],
+                [
+                    "engine",
+                    "test",
+                    "mean_z",
+                    "ks_d",
+                    "max_bin_z",
+                    "lag1_corr",
+                    "adjacent_seed_corr",
+                ],
             ),
             "",
             "## Sparse-id tests",
             "",
             _markdown_table_from_rows(
                 sparse_rows,
-                ["engine", "test", "alt_mean_id_corr", "max_alt_mean_z", "adjacent_alt_corr"],
+                [
+                    "engine",
+                    "test",
+                    "alt_mean_id_corr",
+                    "max_alt_mean_z",
+                    "adjacent_alt_corr",
+                ],
             ),
             "",
             "## Choice-share recovery",
             "",
             _markdown_table_from_rows(
                 choice_rows,
-                ["engine", "scenario", "layout", "max_abs_error", "mean_tv_distance", "worst_replication_max_abs_error"],
+                [
+                    "engine",
+                    "scenario",
+                    "layout",
+                    "max_abs_error",
+                    "mean_tv_distance",
+                    "worst_replication_max_abs_error",
+                ],
             ),
             "",
             "## Dense vs sparse drift",
             "",
             _markdown_table_from_rows(
                 drift_rows,
-                ["engine", "scenario", "mean_abs_dense_sparse_drift", "max_abs_dense_sparse_drift"],
+                [
+                    "engine",
+                    "scenario",
+                    "mean_abs_dense_sparse_drift",
+                    "max_abs_dense_sparse_drift",
+                ],
             ),
             "",
             "## Invariance checks",
             "",
             _markdown_table_from_rows(
                 invariance_rows,
-                ["engine", "offset", "batch_invariant", "sampled_set_invariant", "offset_changes_values", "shared_pairs_checked"],
+                [
+                    "engine",
+                    "offset",
+                    "batch_invariant",
+                    "sampled_set_invariant",
+                    "offset_changes_values",
+                    "shared_pairs_checked",
+                ],
             ),
             "",
             "## Interpretation for a non-RNG specialist",
@@ -1099,7 +1350,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    uniform_specs, sparse_specs, choice_scenarios, invariance_specs = profile_settings(args.profile)
+    uniform_specs, sparse_specs, choice_scenarios, invariance_specs = profile_settings(
+        args.profile
+    )
     engines = available_engines()
 
     uniform_results: list[UniformResult] = []
