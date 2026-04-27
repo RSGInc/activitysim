@@ -68,9 +68,9 @@ def report_bad_choices(
     state: workflow.State,
     bad_row_map,
     df,
-    skip_failed_choices,
-    trace_label,
-    msg,
+    skip_failed_choices=None,
+    trace_label=None,
+    msg=None,
     trace_choosers=None,
     raise_error=True,
 ):
@@ -94,6 +94,11 @@ def report_bad_choices(
     """
     MAX_DUMP = 1000
     MAX_PRINT = 10
+
+    if skip_failed_choices is None:
+        skip_failed_choices = getattr(
+            getattr(state, "settings", None), "skip_failed_choices", False
+        )
 
     msg_with_count = "%s %s for %s of %s rows" % (
         trace_label,
@@ -260,6 +265,7 @@ def validate_utils(
                 state,
                 zero_probs,
                 utils,
+                skip_failed_choices=False,
                 trace_label=tracing.extend_trace_label(trace_label, "zero_prob_utils"),
                 msg="all probabilities are zero",
                 trace_choosers=trace_choosers,
@@ -356,12 +362,9 @@ def utils_to_probs(
             utils_arr.dtype == np.float32 and utils_arr.max() > 85
         )
 
-    # get skip_failed_choices from state
-    skip_failed_choices = state.settings.skip_failed_choices
-    # when skipping failed choices, we cannot use overflow protection
-    # because it would mask the underlying issue causing bad choices
-    if skip_failed_choices:
-        overflow_protection = False
+    skip_failed_choices = skip_failed_choices and getattr(
+        getattr(state, "settings", None), "skip_failed_choices", False
+    )
 
     if overflow_protection:
         # exponentiated utils will overflow, downshift them
@@ -766,7 +769,9 @@ def make_choices(
         np.ones(len(probs.index))
     ).abs() > BAD_PROB_THRESHOLD * np.ones(len(probs.index))
 
-    skip_failed_choices = state.settings.skip_failed_choices
+    skip_failed_choices = getattr(
+        getattr(state, "settings", None), "skip_failed_choices", False
+    )
 
     if bad_probs.any() and not allow_bad_probs:
         report_bad_choices(
