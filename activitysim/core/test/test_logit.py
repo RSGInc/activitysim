@@ -748,10 +748,12 @@ def reset_step(state, name="test_step"):
     state.get_rn_generator().begin_step(name)
 
 
-def test_make_choices_utility_based_sampled_alts():
+@pytest.mark.parametrize("eet_error_term_rng", ["legacy_dense", "keyed_hash"])
+def test_make_choices_utility_based_sampled_alts(eet_error_term_rng):
     """Test the situation of making choices from a sampled choice set"""
     # TODO should these tests go in test_random?
     state = workflow.State().default_settings()
+    state.settings.eet_error_term_rng = eet_error_term_rng
     # Make explicit that there's two indexing schemes - the raw alts, and the 0 based internals
     utils_project_raw = pd.DataFrame(
         {"a": 10.582999, "b": 10.680792, "c": 10.710443},
@@ -810,6 +812,68 @@ def test_make_choices_utility_based_sampled_alts():
     pdt.assert_frame_equal(
         rands_base_labeled, rands_project_labeled.loc[:, rands_base_labeled.columns]
     )
+
+
+@pytest.mark.parametrize("eet_error_term_rng", ["legacy_dense", "keyed_hash"])
+def test_add_ev1_random_sampled_alts_offset_behavior(eet_error_term_rng):
+    state = workflow.State().default_settings()
+    state.settings.eet_error_term_rng = eet_error_term_rng
+
+    utils = pd.DataFrame(
+        {0: [10.0], 1: [12.0]},
+        index=pd.Index([0], name="person_id"),
+    )
+    alt_info = AltsContext.from_num_alts(3, zero_based=True)
+    alt_nrs_df = pd.DataFrame({0: 0, 1: 2}, index=utils.index)
+
+    state.get_rn_generator().add_channel("persons", utils)
+    state.get_rn_generator().begin_step("test_step")
+    channel = state.get_rn_generator().get_channel_for_df(utils)
+
+    offset_before = int(channel.row_states.loc[utils.index[0], "offset"])
+    first = add_ev1_random(state, utils, alt_info=alt_info, alt_nrs_df=alt_nrs_df)
+    offset_after = int(channel.row_states.loc[utils.index[0], "offset"])
+    second = add_ev1_random(state, utils, alt_info=alt_info, alt_nrs_df=alt_nrs_df)
+
+    assert offset_after - offset_before == alt_info.n_alts_to_cover_max_id
+    assert not np.array_equal((first - utils).values, (second - utils).values)
+
+    reset_step(state)
+    repeated = add_ev1_random(state, utils, alt_info=alt_info, alt_nrs_df=alt_nrs_df)
+    pdt.assert_frame_equal(first, repeated)
+
+
+@pytest.mark.parametrize("eet_error_term_rng", ["legacy_dense", "keyed_hash"])
+def test_add_ev1_random_sampled_alts_batch_invariant(eet_error_term_rng):
+    state = workflow.State().default_settings()
+    state.settings.eet_error_term_rng = eet_error_term_rng
+
+    utils = pd.DataFrame(
+        {0: [10.0, 10.0], 1: [12.0, 12.0]},
+        index=pd.Index([101, 202], name="person_id"),
+    )
+    alt_info = AltsContext.from_num_alts(3, zero_based=True)
+    alt_nrs_df = pd.DataFrame({0: [0, 0], 1: [2, 2]}, index=utils.index)
+
+    state.get_rn_generator().add_channel("persons", utils)
+    state.get_rn_generator().begin_step("test_step")
+    ordered = add_ev1_random(state, utils, alt_info=alt_info, alt_nrs_df=alt_nrs_df)
+    ordered_rands = ordered - utils
+
+    reset_step(state)
+    reversed_utils = utils.iloc[::-1]
+    reversed_alt_nrs_df = alt_nrs_df.iloc[::-1]
+    reversed_rands = (
+        add_ev1_random(
+            state,
+            reversed_utils,
+            alt_info=alt_info,
+            alt_nrs_df=reversed_alt_nrs_df,
+        )
+        - reversed_utils
+    ).iloc[::-1]
+
+    pdt.assert_frame_equal(ordered_rands, reversed_rands)
 
 
 def test_alts_context_from_series_and_properties():

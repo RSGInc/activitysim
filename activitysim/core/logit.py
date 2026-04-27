@@ -475,6 +475,9 @@ def add_ev1_random(
         alt_nrs_df is None
     ), "alt_info and alt_nrs_df must both be provided or omitted together"
 
+    settings = getattr(state, "settings", None)
+    eet_error_term_rng = getattr(settings, "eet_error_term_rng", "legacy_dense")
+
     if alt_info is None:
         # Fallback behaviour for models where alt_info/alt_nrs_df are not provided (e.g. non-integer alts)
         rands = state.get_rn_generator().gumbel_for_df(
@@ -486,19 +489,31 @@ def add_ev1_random(
     idx_array = alt_nrs_df.values
     mask = idx_array == -999
     safe_idx = np.where(mask, 1, idx_array)  # replace -999 with a temp value inbounds
-    # generate random number for all alts - this is wasteful, but ensures that the same zone
-    #  gets the same random number if the sampled choice set changes between base and project
-    # (alternatively, one could seed a channel for (persons x zones) and use the zone seed to ensure consistency.
-    # Trade off is needing to seed (persons x zones) rows and multiindex channels to
-    # avoid extra random numbers generated here. Quick benchmark suggests seeding per row is likely slower
-    rands_dense = state.get_rn_generator().gumbel_for_df(
-        nest_utils_for_choice, n=alt_info.n_alts_to_cover_max_id
-    )
-    # generate n=alt_info.max_alt_id+1 rather than n_alts so that indexing works
-    # (this is drawing a random number for a redundant zeroth zone in 1 based zoning systems)
-    # TODO deal with non 0->n-1 indexed land use more efficiently? ideally do where alt_nrs_df is constructed,
-    #  not on the fly here. Potentially via state.get_injectable('network_los').get_skim_dict('taz').zone_ids
-    rands = np.take_along_axis(rands_dense, safe_idx, axis=1)
+    if eet_error_term_rng == "legacy_dense":
+        # generate random number for all alts - this is wasteful, but ensures that the same zone
+        #  gets the same random number if the sampled choice set changes between base and project
+        # (alternatively, one could seed a channel for (persons x zones) and use the zone seed to ensure consistency.
+        # Trade off is needing to seed (persons x zones) rows and multiindex channels to
+        # avoid extra random numbers generated here. Quick benchmark suggests seeding per row is likely slower
+        rands_dense = state.get_rn_generator().gumbel_for_df(
+            nest_utils_for_choice, n=alt_info.n_alts_to_cover_max_id
+        )
+        # generate n=alt_info.max_alt_id+1 rather than n_alts so that indexing works
+        # (this is drawing a random number for a redundant zeroth zone in 1 based zoning systems)
+        # TODO deal with non 0->n-1 indexed land use more efficiently? ideally do where alt_nrs_df is constructed,
+        #  not on the fly here. Potentially via state.get_injectable('network_los').get_skim_dict('taz').zone_ids
+        rands = np.take_along_axis(rands_dense, safe_idx, axis=1)
+    elif eet_error_term_rng == "keyed_hash":
+        rands = state.get_rn_generator().keyed_gumbel_for_df(
+            nest_utils_for_choice,
+            alt_nrs_df.values,
+            consume_offsets=alt_info.n_alts_to_cover_max_id,
+        )
+    else:
+        raise ModelConfigurationError(
+            f"Unknown eet_error_term_rng setting '{eet_error_term_rng}'"
+        )
+
     rands[
         mask
     ] = 0  # zero out the masked zones so they don't have the util adjustment of alt 0

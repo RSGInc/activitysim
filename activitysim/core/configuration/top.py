@@ -788,6 +788,19 @@ class Settings(PydanticBase, extra="allow", validate_assignment=True):
     .. versionadded:: 1.6
     """
 
+    eet_error_term_rng: Literal["legacy_dense", "keyed_hash"] = "legacy_dense"
+    """
+    Backend used to generate explicit-error-term random values for sampled alternatives.
+
+    `legacy_dense` preserves the current implementation, generating enough random values
+    to cover the maximum alternative id and then gathering sampled alternatives back out.
+    `keyed_hash` generates sampled-alternative values directly from chooser seed, alternative
+    id, and current offset.
+
+    This setting only affects explicit-error-term choice paths and defaults to the current
+    `legacy_dense` behavior.
+    """
+
     check_model_settings: bool = True
     """
     run checks to validate that YAML settings files are loadable and spec and coefficient csv can be resolved.

@@ -19,6 +19,11 @@ logger = logging.getLogger(__name__)
 # one more than 0xFFFFFFFF so we can wrap using: int64 % _MAX_SEED
 _MAX_SEED = 1 << 32
 _SEED_MASK = 0xFFFFFFFF
+_MASK_64 = np.uint64((1 << 64) - 1)
+_HASH_GOLDEN_GAMMA = np.uint64(0x9E3779B97F4A7C15)
+_HASH_MUL1 = np.uint64(0xBF58476D1CE4E5B9)
+_HASH_MUL2 = np.uint64(0x94D049BB133111EB)
+_HASH_ALT_TAG = np.uint64(0x51D7348C2F9A3B17)
 
 
 def hash32(s):
@@ -35,6 +40,18 @@ def hash32(s):
     s = s.encode("utf8")
     h = hashlib.md5(s).hexdigest()
     return int(h, base=16) & _SEED_MASK
+
+
+def _splitmix64(values):
+    values = (values + _HASH_GOLDEN_GAMMA) & _MASK_64
+    values = ((values ^ (values >> np.uint64(30))) * _HASH_MUL1) & _MASK_64
+    values = ((values ^ (values >> np.uint64(27))) * _HASH_MUL2) & _MASK_64
+    return values ^ (values >> np.uint64(31))
+
+
+def _uniforms_to_gumbel(values):
+    values = np.clip(values, 1e-12, 1 - 1e-12)
+    return -np.log(-np.log(values))
 
 
 class SimpleChannel(object):
@@ -289,6 +306,53 @@ class SimpleChannel(object):
 
         # update offset for rows we handled
         self.row_states.loc[df.index, "offset"] += n
+        return rands
+
+    def keyed_gumbel_for_df(self, df, step_name, alt_nrs, consume_offsets=None):
+        """
+        Return keyed EV1 error terms for the sampled alternatives in alt_nrs.
+
+        The same chooser-alternative pair will receive the same value for a fixed
+        row seed and offset, regardless of what other alternatives are present.
+        """
+
+        assert self.step_name
+        assert self.step_name == step_name
+
+        alt_nrs = np.asanyarray(alt_nrs)
+        if alt_nrs.ndim != 2:
+            raise ValueError("alt_nrs must be a 2-D array-like")
+        if alt_nrs.shape[0] != len(df.index):
+            raise ValueError("alt_nrs must have one row per chooser row in df")
+
+        if consume_offsets is None:
+            consume_offsets = alt_nrs.shape[1]
+
+        df_row_states = self.row_states.loc[df.index]
+
+        mask = alt_nrs == -999
+        safe_alt_nrs = np.where(mask, 0, alt_nrs)
+
+        row_seed = np.asarray(df_row_states["row_seed"].values, dtype=np.uint64)[
+            :, np.newaxis
+        ]
+        row_offset = np.asarray(df_row_states["offset"].values, dtype=np.uint64)[
+            :, np.newaxis
+        ]
+        alt_state = np.asarray(safe_alt_nrs, dtype=np.uint64)
+
+        mixed = (
+            row_seed * _HASH_MUL1
+            + alt_state * _HASH_GOLDEN_GAMMA
+            + _HASH_ALT_TAG
+            + row_offset * _HASH_MUL2
+        ) & _MASK_64
+        hashed = _splitmix64(mixed)
+        uniforms = ((hashed >> np.uint64(11)).astype(np.float64)) * (1.0 / (1 << 53))
+        rands = _uniforms_to_gumbel(uniforms)
+        rands[mask] = 0
+
+        self.row_states.loc[df.index, "offset"] += consume_offsets
         return rands
 
     def normal_for_df(self, df, step_name, mu, sigma, lognormal=False, size=None):
@@ -729,6 +793,15 @@ class Random(object):
         channel = self.get_channel_for_df(df)
         rands = channel.gumbel_for_df(df, self.step_name, n)
         return rands
+
+    def keyed_gumbel_for_df(self, df, alt_nrs, consume_offsets=None):
+        """
+        Return keyed EV1 error terms aligned to sampled alternative ids.
+        """
+        channel = self.get_channel_for_df(df)
+        return channel.keyed_gumbel_for_df(
+            df, self.step_name, alt_nrs, consume_offsets=consume_offsets
+        )
 
     def normal_for_df(self, df, mu=0, sigma=1, broadcast=False, size=None):
         """
