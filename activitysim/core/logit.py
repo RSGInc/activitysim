@@ -481,8 +481,36 @@ def add_ev1_random(
     settings = getattr(state, "settings", None)
     eet_error_term_rng = getattr(settings, "eet_error_term_rng", "legacy_dense")
 
+    if eet_error_term_rng == "keyed_hash":
+        if alt_nrs_df is None:
+            # Derive integer alternative identifiers for keyed hashing when the
+            # caller did not provide an explicit sampled-alt mapping.
+            if pd.api.types.is_integer_dtype(nest_utils_for_choice.columns.dtype):
+                alt_nrs = nest_utils_for_choice.columns.to_numpy(
+                    dtype=np.int64, copy=False
+                )
+            else:
+                alt_nrs = np.arange(nest_utils_for_choice.shape[1], dtype=np.int64)
+            alt_nrs = np.broadcast_to(alt_nrs, nest_utils_for_choice.shape)
+            consume_offsets = nest_utils_for_choice.shape[1]
+            mask = None
+        else:
+            alt_nrs = alt_nrs_df.values
+            consume_offsets = alt_info.n_alts_to_cover_max_id
+            mask = alt_nrs == -999
+
+        rands = state.get_rn_generator().keyed_gumbel_for_df(
+            nest_utils_for_choice,
+            alt_nrs,
+            consume_offsets=consume_offsets,
+        )
+        if mask is not None:
+            rands[mask] = 0
+        nest_utils_for_choice += rands
+        return nest_utils_for_choice
+
     if alt_info is None:
-        # Fallback behaviour for models where alt_info/alt_nrs_df are not provided (e.g. non-integer alts)
+        # Fallback behaviour for models where alt_info/alt_nrs_df are not provided.
         rands = state.get_rn_generator().gumbel_for_df(
             nest_utils_for_choice, n=nest_utils_for_choice.shape[1]
         )
@@ -506,12 +534,6 @@ def add_ev1_random(
         # TODO deal with non 0->n-1 indexed land use more efficiently? ideally do where alt_nrs_df is constructed,
         #  not on the fly here. Potentially via state.get_injectable('network_los').get_skim_dict('taz').zone_ids
         rands = np.take_along_axis(rands_dense, safe_idx, axis=1)
-    elif eet_error_term_rng == "keyed_hash":
-        rands = state.get_rn_generator().keyed_gumbel_for_df(
-            nest_utils_for_choice,
-            alt_nrs_df.values,
-            consume_offsets=alt_info.n_alts_to_cover_max_id,
-        )
     else:
         raise ModelConfigurationError(
             f"Unknown eet_error_term_rng setting '{eet_error_term_rng}'"

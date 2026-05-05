@@ -385,6 +385,60 @@ def test_add_ev1_random():
     )
 
 
+@pytest.mark.parametrize(
+    ("columns", "expected_alt_nrs"),
+    [
+        (pd.Index([10, 20]), np.array([[10, 20], [10, 20]], dtype=np.int64)),
+        (pd.Index(["a", "b"]), np.array([[0, 1], [0, 1]], dtype=np.int64)),
+    ],
+)
+def test_add_ev1_random_keyed_hash_without_alt_context_routes_to_keyed_backend(
+    columns, expected_alt_nrs
+):
+    class DummyRNG:
+        def __init__(self):
+            self.gumbel_calls = 0
+            self.keyed_calls = 0
+
+        def gumbel_for_df(self, df, n):
+            self.gumbel_calls += 1
+            return np.zeros((len(df), n))
+
+        def keyed_gumbel_for_df(self, df, alt_nrs, consume_offsets=None):
+            self.keyed_calls += 1
+            np.testing.assert_array_equal(alt_nrs, expected_alt_nrs)
+            assert consume_offsets == df.shape[1]
+            return alt_nrs.astype(float)
+
+    rng = DummyRNG()
+
+    class DummySettings:
+        eet_error_term_rng = "keyed_hash"
+
+    class DummyState:
+        settings = DummySettings()
+
+        @staticmethod
+        def get_rn_generator():
+            return rng
+
+    utilities = pd.DataFrame(
+        [[1.0, 2.0], [3.0, 4.0]],
+        index=[10, 11],
+        columns=columns,
+    )
+
+    randomized = logit.add_ev1_random(DummyState(), utilities)
+
+    pdt.assert_frame_equal(
+        randomized,
+        utilities
+        + pd.DataFrame(expected_alt_nrs, index=utilities.index, columns=columns),
+    )
+    assert rng.gumbel_calls == 0
+    assert rng.keyed_calls == 1
+
+
 def test_add_ev1_random_requires_paired_alt_context_args():
     class DummyRNG:
         def gumbel_for_df(self, df, n):

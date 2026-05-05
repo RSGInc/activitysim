@@ -13,6 +13,8 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 
+from benchmark_rng import RNGCandidate, available_candidates
+
 _MAX_SEED = 1 << 32
 _SEED_MASK = 0xFFFFFFFF
 _MASK_64 = np.uint64((1 << 64) - 1)
@@ -51,6 +53,8 @@ class ScenarioInputs:
 class InvarianceResult:
     engine: str
     strategy_label: str
+    engine_family: str
+    drop_in_compatible: bool
     offset: int
     batch_invariant: bool
     sampled_set_invariant: bool
@@ -66,6 +70,8 @@ class KernelResult:
     kernel: str
     engine: str
     strategy_label: str
+    engine_family: str
+    drop_in_compatible: bool
     chooser_count: int
     sample_size: int
     actual_alt_count: int
@@ -128,6 +134,8 @@ def _timed_repeats(func: Callable[[], object], repeat: int) -> tuple[list[float]
 class ShockEngine:
     name = "base"
     strategy_label = "baseline"
+    engine_family = "baseline"
+    drop_in_compatible = False
 
     def shocks(
         self,
@@ -152,6 +160,8 @@ class ShockEngine:
 class CurrentDenseEngine(ShockEngine):
     name = "current_dense"
     strategy_label = "Dense max-id gather"
+    engine_family = "drop_in_dense"
+    drop_in_compatible = True
 
     def shocks(
         self,
@@ -182,9 +192,49 @@ class CurrentDenseEngine(ShockEngine):
         return max_alt_id + 1
 
 
+class DenseCandidateEngine(ShockEngine):
+    engine_family = "drop_in_dense"
+
+    def __init__(
+        self,
+        candidate: RNGCandidate,
+        name: str,
+        strategy_label: str,
+        drop_in_compatible: bool = True,
+    ) -> None:
+        self.candidate = candidate
+        self.name = name
+        self.strategy_label = strategy_label
+        self.drop_in_compatible = drop_in_compatible
+
+    def shocks(
+        self,
+        row_seeds: np.ndarray,
+        sampled_alt_ids: np.ndarray,
+        dense_positions: np.ndarray,
+        actual_alt_ids: np.ndarray,
+        max_alt_id: int,
+        offset: int = 0,
+    ) -> np.ndarray:
+        dense_draws = self.candidate.draw_gumbel(
+            row_seeds, n=max_alt_id + 1, offset=offset
+        )
+        return np.take_along_axis(dense_draws, sampled_alt_ids, axis=1)
+
+    def generated_shocks_per_chooser(
+        self,
+        sampled_alt_ids: np.ndarray,
+        actual_alt_ids: np.ndarray,
+        max_alt_id: int,
+    ) -> int:
+        return max_alt_id + 1
+
+
 class CompressedDenseEngine(ShockEngine):
     name = "compressed_dense"
     strategy_label = "Compressed alt remap"
+    engine_family = "structural_eet"
+    drop_in_compatible = False
 
     def shocks(
         self,
@@ -218,6 +268,8 @@ class CompressedDenseEngine(ShockEngine):
 class KeyedHashEngine(ShockEngine):
     name = "keyed_hash"
     strategy_label = "Keyed chooser-alt hash"
+    engine_family = "structural_eet"
+    drop_in_compatible = False
 
     _GOLDEN_GAMMA = np.uint64(0x9E3779B97F4A7C15)
     _MUL1 = np.uint64(0xBF58476D1CE4E5B9)
@@ -278,6 +330,8 @@ def _pair_seed(row_seed: int, alt_id: int, stream_tag: int = 0) -> int:
 
 
 class KeyedBitGeneratorEngine(ShockEngine):
+    engine_family = "structural_eet"
+    drop_in_compatible = False
     bitgen_cls: type[np.random.BitGenerator]
     use_advance: bool
 
@@ -331,8 +385,40 @@ class KeyedBitGeneratorEngine(ShockEngine):
 
 
 def available_engines() -> list[ShockEngine]:
+    candidate_map = available_candidates()
     return [
         CurrentDenseEngine(),
+        DenseCandidateEngine(
+            candidate_map["GeneratorPCG64"],
+            "dense_pcg64",
+            "Dense max-id gather | PCG64",
+        ),
+        DenseCandidateEngine(
+            candidate_map["GeneratorSFC64"],
+            "dense_sfc64",
+            "Dense max-id gather | SFC64",
+        ),
+        DenseCandidateEngine(
+            candidate_map["GeneratorPhilox"],
+            "dense_philox",
+            "Dense max-id gather | Philox",
+        ),
+        DenseCandidateEngine(
+            candidate_map["GeneratorMT19937"],
+            "dense_mt19937",
+            "Dense max-id gather | MT19937",
+        ),
+        DenseCandidateEngine(
+            candidate_map["PhiloxAdvance"],
+            "dense_philox_advance",
+            "Dense max-id gather | Philox advance",
+        ),
+        DenseCandidateEngine(
+            candidate_map["VectorizedChooserHash"],
+            "dense_vectorized_hash",
+            "Dense max-id gather | Vectorized hash",
+            drop_in_compatible=False,
+        ),
         CompressedDenseEngine(),
         KeyedHashEngine(),
         KeyedBitGeneratorEngine(
@@ -521,6 +607,8 @@ def run_invariance_check(
     return InvarianceResult(
         engine=engine.name,
         strategy_label=engine.strategy_label,
+        engine_family=engine.engine_family,
+        drop_in_compatible=engine.drop_in_compatible,
         offset=offset,
         batch_invariant=batch_invariant,
         sampled_set_invariant=sampled_set_invariant,
@@ -555,6 +643,8 @@ def _make_kernel_result(
         kernel=kernel,
         engine=engine.name,
         strategy_label=engine.strategy_label,
+        engine_family=engine.engine_family,
+        drop_in_compatible=engine.drop_in_compatible,
         chooser_count=spec.chooser_count,
         sample_size=spec.sample_size,
         actual_alt_count=spec.actual_alt_count,
@@ -606,14 +696,50 @@ def benchmark_engine(
 
 
 def _markdown_table(df: pd.DataFrame) -> str:
+    def _format_cell(value: object) -> str:
+        text = str(value)
+        text = text.replace("|", "\\|")
+        return text.replace("\n", " ")
+
     headers = list(df.columns)
     lines = [
         "| " + " | ".join(headers) + " |",
         "| " + " | ".join(["---"] * len(headers)) + " |",
     ]
     for row in df.itertuples(index=False):
-        lines.append("| " + " | ".join(str(value) for value in row) + " |")
+        lines.append("| " + " | ".join(_format_cell(value) for value in row) + " |")
     return "\n".join(lines)
+
+
+def _engine_family_title(engine_family: str) -> str:
+    if engine_family == "drop_in_dense":
+        return "Drop-in Dense Replacements"
+    if engine_family == "structural_eet":
+        return "Structural EET Alternatives"
+    return engine_family.replace("_", " ").title()
+
+
+def _drop_in_text(value: bool) -> str:
+    return "yes" if value else "no"
+
+
+def _plot_token(value: str) -> str:
+    tokens = {
+        "sparsity_sweep": "ss",
+        "chooser_sweep": "cs",
+        "offset_sweep": "os",
+        "shock_lookup": "sl",
+        "final_choice": "fc",
+        "mean_seconds": "ms",
+        "peak_memory_mb": "pm",
+        "useful_shocks_per_sec": "us",
+        "waste_factor": "wf",
+        "speedup_vs_current": "sp",
+        "sparsity_ratio": "sr",
+        "chooser_count": "cc",
+        "offset": "off",
+    }
+    return tokens.get(value, value)
 
 
 def write_results_csv(results: list[KernelResult], output_dir: Path) -> Path:
@@ -651,14 +777,8 @@ def write_summary_markdown(
     summary_path = output_dir / "eet_keyed_maz_test_summary.md"
     df = pd.DataFrame(asdict(result) for result in results)
     inv_df = pd.DataFrame(asdict(result) for result in invariance_results)
-
-    grouped = (
-        df.groupby(["suite", "kernel", "strategy_label", "offset"], as_index=False)[
-            ["mean_seconds", "peak_memory_mb", "waste_factor", "useful_shocks_per_sec"]
-        ]
-        .mean()
-        .round(4)
-    )
+    df["drop_in_compatible"] = df["drop_in_compatible"].map(_drop_in_text)
+    inv_df["drop_in_compatible"] = inv_df["drop_in_compatible"].map(_drop_in_text)
 
     speedup_rows: list[dict[str, object]] = []
     for suite in sorted(df["suite"].unique()):
@@ -674,9 +794,15 @@ def write_summary_markdown(
                 merged["baseline_seconds"] / merged["mean_seconds"]
             )
             summary = (
-                merged.groupby(["strategy_label", "offset"], as_index=False)[
-                    "speedup_vs_current"
-                ]
+                merged.groupby(
+                    [
+                        "engine_family",
+                        "drop_in_compatible",
+                        "strategy_label",
+                        "offset",
+                    ],
+                    as_index=False,
+                )["speedup_vs_current"]
                 .mean()
                 .round(3)
             )
@@ -685,6 +811,8 @@ def write_summary_markdown(
                     {
                         "suite": suite,
                         "kernel": kernel,
+                        "engine_family": row.engine_family,
+                        "drop_in_compatible": row.drop_in_compatible,
                         "strategy_label": row.strategy_label,
                         "offset": row.offset,
                         "avg_speedup_vs_current": row.speedup_vs_current,
@@ -697,28 +825,17 @@ def write_summary_markdown(
         "",
         "This output compares several shock-generation strategies on a simplified, off-model version of the explicit-error-term final MAZ choice problem:",
         "",
-        "- Dense max-id gather",
-        "- Compressed alternative remap",
-        "- Keyed chooser-alt hash",
-        "- Keyed chooser-alt Philox",
-        "- Keyed chooser-alt PCG64",
+        "- Drop-in dense replacements that preserve the current max-id gather structure while swapping the RNG backend",
+        "- Structural EET alternatives that change how shocks are recovered for sampled alternatives",
         "",
-        "The benchmark now includes sparsity, chooser-count, and offset sweeps.",
+        "The benchmark includes sparsity, chooser-count, and offset sweeps. Every engine runs on the same scenario inputs within each sweep.",
         "",
         "The kernels reported below isolate what matters for the decision:",
         "",
         "- `shock_lookup`: generate or recover the EV1 shock for each sampled MAZ",
-        "- `final_choice`: add those shocks to deterministic utilities and take the argmax",
+        "- `final_choice`: add those shocks to deterministic utilities and take the argmax as a dedicated full-choice preparation test",
         "",
-        "Offset sweeps show how each strategy behaves when the random stream position needs to advance before sampled MAZ shocks are consumed.",
-        "",
-        "## Average metrics by suite, kernel, and strategy",
-        "",
-        _markdown_table(grouped),
-        "",
-        "## Average speedup versus current dense baseline",
-        "",
-        _markdown_table(speedup_df),
+        "Offset sweeps in this benchmark focus on single-call offset behavior.",
         "",
         "## Invariance checks",
         "",
@@ -731,6 +848,50 @@ def write_summary_markdown(
         "- The `offset` column is the number of prior draws consumed before the tested shock lookup.",
         "- A passing invariance result means shared chooser-MAZ pairs keep the same shock even when the sampled set changes, batch order does not matter, and nonzero offsets actually change the draw state.",
     ]
+    for kernel in ["shock_lookup", "final_choice"]:
+        lines.extend(["", f"## {kernel.replace('_', ' ').title()} summaries", ""])
+        for engine_family in ["drop_in_dense", "structural_eet"]:
+            subset = df[
+                (df["kernel"] == kernel) & (df["engine_family"] == engine_family)
+            ].copy()
+            if subset.empty:
+                continue
+            grouped = (
+                subset.groupby(
+                    [
+                        "suite",
+                        "drop_in_compatible",
+                        "strategy_label",
+                        "offset",
+                    ],
+                    as_index=False,
+                )[
+                    [
+                        "mean_seconds",
+                        "peak_memory_mb",
+                        "waste_factor",
+                        "useful_shocks_per_sec",
+                    ]
+                ]
+                .mean()
+                .round(4)
+            )
+            family_speedup_df = speedup_df[
+                (speedup_df["kernel"] == kernel)
+                & (speedup_df["engine_family"] == engine_family)
+            ].copy()
+            lines.extend(
+                [
+                    f"### {_engine_family_title(engine_family)}",
+                    "",
+                    _markdown_table(grouped),
+                    "",
+                    "Average speedup versus current dense baseline:",
+                    "",
+                    _markdown_table(family_speedup_df),
+                    "",
+                ]
+            )
     summary_path.write_text("\n".join(lines), encoding="utf8")
     return summary_path
 
@@ -748,6 +909,7 @@ def _plot_metric(
     df: pd.DataFrame,
     suite: str,
     kernel: str,
+    engine_family: str,
     x_field: str,
     y_field: str,
     output_dir: Path,
@@ -755,7 +917,11 @@ def _plot_metric(
     plt = _safe_import_matplotlib()
     if plt is None:
         return None
-    subset = df[(df["suite"] == suite) & (df["kernel"] == kernel)].copy()
+    subset = df[
+        (df["suite"] == suite)
+        & (df["kernel"] == kernel)
+        & (df["engine_family"] == engine_family)
+    ].copy()
     if subset.empty:
         return None
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -777,7 +943,7 @@ def _plot_metric(
     title_metric = y_field.replace("_", " ")
     title_x = x_field.replace("_", " ")
     ax.set_title(
-        f"{suite.replace('_', ' ').title()} | {kernel.replace('_', ' ')} | {title_metric}"
+        f"{_engine_family_title(engine_family)} | {suite.replace('_', ' ').title()} | {kernel.replace('_', ' ')} | {title_metric}"
     )
     ax.set_xlabel(title_x)
     ax.set_ylabel(title_metric)
@@ -785,19 +951,31 @@ def _plot_metric(
     ax.legend(loc="best")
     fig.tight_layout()
 
-    save_path = output_dir / f"{suite}__{kernel}__{y_field}__vs_{x_field}.png"
+    save_path = (
+        output_dir
+        / f"{_plot_token(suite)}__{_plot_token(kernel)}__{_plot_token(y_field)}__vs_{_plot_token(x_field)}.png"
+    )
     fig.savefig(save_path, dpi=150)
     plt.close(fig)
     return save_path
 
 
 def _plot_speedup(
-    df: pd.DataFrame, suite: str, kernel: str, x_field: str, output_dir: Path
+    df: pd.DataFrame,
+    suite: str,
+    kernel: str,
+    engine_family: str,
+    x_field: str,
+    output_dir: Path,
 ) -> Path | None:
     plt = _safe_import_matplotlib()
     if plt is None:
         return None
-    subset = df[(df["suite"] == suite) & (df["kernel"] == kernel)].copy()
+    subset = df[
+        (df["suite"] == suite)
+        & (df["kernel"] == kernel)
+        & (df["engine_family"] == engine_family)
+    ].copy()
     baseline = subset[subset["engine"] == "current_dense"][
         [x_field, "mean_seconds"]
     ].rename(columns={"mean_seconds": "baseline_seconds"})
@@ -824,7 +1002,7 @@ def _plot_speedup(
 
     ax.axhline(1.0, color="black", linestyle="--", linewidth=1.0)
     ax.set_title(
-        f"{suite.replace('_', ' ').title()} | {kernel.replace('_', ' ')} | speedup vs current dense"
+        f"{_engine_family_title(engine_family)} | {suite.replace('_', ' ').title()} | {kernel.replace('_', ' ')} | speedup vs current dense"
     )
     ax.set_xlabel(x_field.replace("_", " "))
     ax.set_ylabel("speedup vs current dense")
@@ -832,7 +1010,10 @@ def _plot_speedup(
     ax.legend(loc="best")
     fig.tight_layout()
 
-    save_path = output_dir / f"{suite}__{kernel}__speedup_vs_current__vs_{x_field}.png"
+    save_path = (
+        output_dir
+        / f"{_plot_token(suite)}__{_plot_token(kernel)}__{_plot_token('speedup_vs_current')}__vs_{_plot_token(x_field)}.png"
+    )
     fig.savefig(save_path, dpi=150)
     plt.close(fig)
     return save_path
@@ -841,6 +1022,9 @@ def _plot_speedup(
 def write_plots(results: list[KernelResult], output_dir: Path) -> list[Path]:
     df = pd.DataFrame(asdict(result) for result in results)
     plot_dir = output_dir / "plots"
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    for old_plot in plot_dir.glob("*.png"):
+        old_plot.unlink()
     plot_specs = [
         ("sparsity_sweep", "shock_lookup", "sparsity_ratio", "mean_seconds"),
         ("sparsity_sweep", "final_choice", "sparsity_ratio", "mean_seconds"),
@@ -854,20 +1038,29 @@ def write_plots(results: list[KernelResult], output_dir: Path) -> list[Path]:
         ("offset_sweep", "shock_lookup", "offset", "useful_shocks_per_sec"),
     ]
     saved_paths: list[Path] = []
-    for suite, kernel, x_field, y_field in plot_specs:
-        save_path = _plot_metric(df, suite, kernel, x_field, y_field, plot_dir)
-        if save_path is not None:
-            saved_paths.append(save_path)
-    for suite, kernel, x_field in [
-        ("sparsity_sweep", "shock_lookup", "sparsity_ratio"),
-        ("sparsity_sweep", "final_choice", "sparsity_ratio"),
-        ("chooser_sweep", "final_choice", "chooser_count"),
-        ("offset_sweep", "shock_lookup", "offset"),
-        ("offset_sweep", "final_choice", "offset"),
-    ]:
-        save_path = _plot_speedup(df, suite, kernel, x_field, plot_dir)
-        if save_path is not None:
-            saved_paths.append(save_path)
+    for engine_family in ["drop_in_dense", "structural_eet"]:
+        family_plot_dir = plot_dir / engine_family
+        family_plot_dir.mkdir(parents=True, exist_ok=True)
+        for old_plot in family_plot_dir.glob("*.png"):
+            old_plot.unlink()
+        for suite, kernel, x_field, y_field in plot_specs:
+            save_path = _plot_metric(
+                df, suite, kernel, engine_family, x_field, y_field, family_plot_dir
+            )
+            if save_path is not None:
+                saved_paths.append(save_path)
+        for suite, kernel, x_field in [
+            ("sparsity_sweep", "shock_lookup", "sparsity_ratio"),
+            ("sparsity_sweep", "final_choice", "sparsity_ratio"),
+            ("chooser_sweep", "final_choice", "chooser_count"),
+            ("offset_sweep", "shock_lookup", "offset"),
+            ("offset_sweep", "final_choice", "offset"),
+        ]:
+            save_path = _plot_speedup(
+                df, suite, kernel, engine_family, x_field, family_plot_dir
+            )
+            if save_path is not None:
+                saved_paths.append(save_path)
     return saved_paths
 
 
@@ -939,14 +1132,14 @@ def print_results(
     results: list[KernelResult], invariance_results: list[InvarianceResult]
 ) -> None:
     header = (
-        f"{'Scenario':16} {'Kernel':13} {'Strategy':28} {'Offset':>8} {'Choosers':>9} {'Sparse':>8} "
+        f"{'Scenario':16} {'Kernel':13} {'Family':17} {'Strategy':28} {'Offset':>8} {'Choosers':>9} {'Sparse':>8} "
         f"{'Mean(s)':>10} {'PeakMB':>9} {'Waste':>8} {'Useful/s':>12}"
     )
     print("\n" + header)
     print("-" * len(header))
     for row in results:
         print(
-            f"{row.scenario:16} {row.kernel:13} {row.strategy_label:28} {row.offset:8d} {row.chooser_count:9d} "
+            f"{row.scenario:16} {row.kernel:13} {_engine_family_title(row.engine_family)[:17]:17} {row.strategy_label:28} {row.offset:8d} {row.chooser_count:9d} "
             f"{row.sparsity_ratio:8.1f} {row.mean_seconds:10.6f} {row.peak_memory_mb:9.2f} "
             f"{row.waste_factor:8.2f} {row.useful_shocks_per_sec:12.1f}"
         )
@@ -960,7 +1153,10 @@ def print_results(
             and result.offset_changes_values
             else "FAIL"
         )
-        print(f"{result.strategy_label:28} {status:4} {result.message}")
+        print(
+            f"{result.strategy_label:28} {status:4} family={result.engine_family}; "
+            f"drop_in={_drop_in_text(result.drop_in_compatible)}; {result.message}"
+        )
 
 
 def parse_args() -> argparse.Namespace:

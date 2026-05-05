@@ -704,6 +704,7 @@ class Settings(PydanticBase, extra="allow", validate_assignment=True):
         "instrument",
         "sharrow",
         "use_explicit_error_terms",
+        "eet_error_term_rng",
     )
     """
     Setting to log on startup.

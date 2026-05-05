@@ -58,12 +58,34 @@ def make_sample_choices_utility_based(
             utilities = utilities[~zero_probs]
             choosers = choosers[~zero_probs]
 
-    rands = state.get_rn_generator().gumbel_for_df(
-        utilities, n=alternative_count * sample_size
-    )
-    chunk_sizer.log_df(trace_label, "rands", rands)
+    settings = getattr(state, "settings", None)
+    eet_error_term_rng = getattr(settings, "eet_error_term_rng", "legacy_dense")
 
-    rands = rands.reshape((utilities.shape[0], alternative_count, sample_size))
+    if eet_error_term_rng == "keyed_hash" and pd.api.types.is_integer_dtype(
+        alternatives.index.dtype
+    ):
+        alt_nrs = np.broadcast_to(
+            alternatives.index.to_numpy(dtype=np.int64),
+            (utilities.shape[0], alternative_count),
+        )
+        rands = np.stack(
+            [
+                state.get_rn_generator().keyed_gumbel_for_df(
+                    utilities,
+                    alt_nrs,
+                    consume_offsets=alternative_count,
+                )
+                for _ in range(sample_size)
+            ],
+            axis=2,
+        )
+    else:
+        rands = state.get_rn_generator().gumbel_for_df(
+            utilities, n=alternative_count * sample_size
+        )
+        rands = rands.reshape((utilities.shape[0], alternative_count, sample_size))
+
+    chunk_sizer.log_df(trace_label, "rands", rands)
     rands += utilities.to_numpy()[:, :, np.newaxis]
 
     # choose maximum along all alternatives (axis 1) for all choosers and samples

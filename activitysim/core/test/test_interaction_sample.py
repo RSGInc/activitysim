@@ -216,9 +216,15 @@ class _DummyChunkSizer:
         return None
 
 
+class _DummySettings:
+    def __init__(self, eet_error_term_rng="legacy_dense"):
+        self.eet_error_term_rng = eet_error_term_rng
+
+
 class _DummyState:
-    def __init__(self, rng):
+    def __init__(self, rng, eet_error_term_rng="legacy_dense"):
         self._rng = rng
+        self.settings = _DummySettings(eet_error_term_rng=eet_error_term_rng)
 
     def get_rn_generator(self):
         return self._rng
@@ -231,6 +237,29 @@ class _DummyRngUtilityBased:
     def gumbel_for_df(self, _utilities, n):
         assert n == self.rands_3d.shape[1] * self.rands_3d.shape[2]
         return self.rands_3d.reshape(-1)
+
+
+class _DummyRngUtilityBasedDispatch:
+    def __init__(self, chooser_count, alt_ids, sample_size):
+        self.chooser_count = chooser_count
+        self.alt_ids = np.asarray(alt_ids, dtype=np.int64)
+        self.sample_size = sample_size
+        self.gumbel_calls = 0
+        self.keyed_calls = 0
+
+    def gumbel_for_df(self, _utilities, n):
+        self.gumbel_calls += 1
+        assert n == len(self.alt_ids) * self.sample_size
+        return np.zeros(self.chooser_count * len(self.alt_ids) * self.sample_size)
+
+    def keyed_gumbel_for_df(self, _utilities, alt_nrs, consume_offsets=None):
+        self.keyed_calls += 1
+        expected_alt_nrs = np.broadcast_to(
+            self.alt_ids, (self.chooser_count, len(self.alt_ids))
+        )
+        np.testing.assert_array_equal(alt_nrs, expected_alt_nrs)
+        assert consume_offsets == len(self.alt_ids)
+        return np.zeros((self.chooser_count, len(self.alt_ids)))
 
 
 def test_make_sample_choices_utility_based_repeat_alignment_chooser_dominant_heterogeneity():
@@ -295,3 +324,48 @@ def test_make_sample_choices_utility_based_repeat_alignment_chooser_dominant_het
 
     assert np.array_equal(out["prob"].to_numpy(), expected_prob_repeat)
     assert not np.array_equal(out["prob"].to_numpy(), wrong_prob_tile)
+
+
+@pytest.mark.parametrize(
+    ("eet_error_term_rng", "expected_gumbel_calls", "expected_keyed_calls"),
+    [("legacy_dense", 1, 0), ("keyed_hash", 0, 3)],
+)
+def test_make_sample_choices_utility_based_dispatches_rng_backend(
+    eet_error_term_rng,
+    expected_gumbel_calls,
+    expected_keyed_calls,
+):
+    chooser_index = pd.Index([101, 102], name="person_id")
+    choosers = pd.DataFrame(index=chooser_index)
+    alt_ids = pd.Index([10, 20, 30, 40], name="alt_id")
+    alternatives = pd.DataFrame(index=alt_ids)
+    sample_size = 3
+
+    utilities = pd.DataFrame(
+        np.zeros((len(choosers), len(alternatives))),
+        index=chooser_index,
+    )
+
+    rng = _DummyRngUtilityBasedDispatch(
+        chooser_count=len(choosers),
+        alt_ids=alt_ids.to_numpy(),
+        sample_size=sample_size,
+    )
+    state = _DummyState(rng, eet_error_term_rng=eet_error_term_rng)
+
+    out = interaction_sample.make_sample_choices_utility_based(
+        state=state,
+        choosers=choosers,
+        utilities=utilities,
+        alternatives=alternatives,
+        sample_size=sample_size,
+        alternative_count=len(alternatives),
+        alt_col_name="alt_id",
+        allow_zero_probs=False,
+        trace_label="test_rng_backend_dispatch",
+        chunk_sizer=_DummyChunkSizer(),
+    )
+
+    assert len(out) == len(choosers) * sample_size
+    assert rng.gumbel_calls == expected_gumbel_calls
+    assert rng.keyed_calls == expected_keyed_calls
