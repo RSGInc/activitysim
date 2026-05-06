@@ -28,6 +28,10 @@ class TelecommuteFrequencySettings(LogitComponentSettings, extra="forbid"):
     preprocessor: PreprocessorSettings | None = None
     """Setting for the preprocessor."""
 
+    CHOOSER_FILTER_EXPR: str = "workplace_zone_id > -1"
+    """Expression to filter the chooser table before simulating the model.  
+    Applied before preprocessing as a .query() expression."""
+
 
 @workflow.step
 def telecommute_frequency(
@@ -53,7 +57,7 @@ def telecommute_frequency(
         )
 
     choosers = persons_merged
-    choosers = choosers[choosers.workplace_zone_id > -1]
+    choosers = choosers.query(model_settings.CHOOSER_FILTER_EXPR)
 
     logger.info("Running %s with %d persons", trace_label, len(choosers))
 
