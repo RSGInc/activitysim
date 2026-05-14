@@ -1384,7 +1384,7 @@ def eval_mnl(
 
         del utilities
         chunk_sizer.log_df(trace_label, "utilities", None)
-    
+
         # resimulate one of the failed households for tracing
         if state.settings.skip_failed_choices:
             _resimulate_failed_choice_for_tracing(
@@ -1623,7 +1623,7 @@ def eval_nl(
                 trace_choosers=choosers,
                 msg="base_probabilities do not sum to one",
             )
-            
+
             if state.settings.skip_failed_choices:
                 _resimulate_failed_choice_for_tracing(
                     state=state,

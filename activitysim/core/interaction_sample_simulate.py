@@ -402,7 +402,7 @@ def _interaction_sample_simulate(
     # need to get from an integer offset into the alternative sample to the alternative index
     # that is, we want the index value of the row that is offset by <position> rows into the
     # tranche of this choosers alternatives created by cross join of alternatives and choosers
-    
+
     # when skip failed choices is enabled, the position may be -99 for failed choices, which gets droppped eventually
     # here we just need to clip to zero to avoid getting the wrong index in the take() below
     if state.settings.skip_failed_choices:
