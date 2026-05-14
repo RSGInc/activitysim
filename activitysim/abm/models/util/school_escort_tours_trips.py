@@ -590,12 +590,16 @@ def replace_school_escort_trips_with_survey_trips(school_escort_trips):
     gets dropped off first even though child 2 is has a closer school zone.
     """
     survey_trips = estimation.manager.get_survey_table("trips")
+    survey_tours = estimation.manager.get_survey_table("tours")
+
+    survey_trips.loc[survey_trips.outbound,"chauf_tour_id"] = survey_trips.tour_id.map(survey_tours.out_chauffeur_tour_id)
+    survey_trips.loc[~survey_trips.outbound,"chauf_tour_id"] = survey_trips.tour_id.map(survey_tours.inb_chauffeur_tour_id)
 
     required_cols = [
         "household_id",
         "person_id",
         "tour_id",
-        "trip_id",
+        # "trip_id", # this is the table index so not in the columns
         "outbound",
         "depart",
         "purpose",
@@ -603,6 +607,7 @@ def replace_school_escort_trips_with_survey_trips(school_escort_trips):
         "escort_participants",
         "chauf_tour_id",
         "primary_purpose",
+        "school_escort_direction",
     ]
     missing_cols = set(required_cols).difference(survey_trips.columns)
     if missing_cols:
@@ -629,9 +634,9 @@ def create_school_escort_trips(escort_bundles):
     school_escort_trips = pd.concat([chauf_trips, escortee_trips], axis=0)
 
     # explicitly disallow intrazonal school escorting trips
-    school_escort_trips = school_escort_trips[
-        school_escort_trips.origin != school_escort_trips.destination
-    ]
+    # school_escort_trips = school_escort_trips[
+    #     school_escort_trips.origin != school_escort_trips.destination
+    # ]
 
     if estimation.manager.enabled:
         school_escort_trips = replace_school_escort_trips_with_survey_trips(
