@@ -126,3 +126,40 @@ def test_channel():
     npt.assert_almost_equal(np.asanyarray(rands).flatten(), test1_expected_rands2)
 
     rng.end_step("test_step")
+
+
+def test_keyed_gumbel_for_df_batched_matches_repeated_draws():
+    rng = random.Random()
+
+    choosers = pd.DataFrame(index=pd.Index([101, 202], name="person_id"))
+    alt_nrs = np.array([[10, 20, 30], [10, 20, 30]], dtype=np.int64)
+    draw_count = 4
+    consume_offsets = alt_nrs.shape[1]
+
+    rng.set_base_seed(0)
+    rng.add_channel("persons", choosers)
+    rng.begin_step("test_step")
+
+    batched = rng.keyed_gumbel_for_df(
+        choosers,
+        alt_nrs,
+        consume_offsets=consume_offsets,
+        draw_count=draw_count,
+    )
+
+    rng.end_step("test_step")
+    rng.begin_step("test_step")
+
+    repeated = np.stack(
+        [
+            rng.keyed_gumbel_for_df(
+                choosers,
+                alt_nrs,
+                consume_offsets=consume_offsets,
+            )
+            for _ in range(draw_count)
+        ],
+        axis=2,
+    )
+
+    npt.assert_allclose(batched, repeated)

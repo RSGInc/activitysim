@@ -252,14 +252,17 @@ class _DummyRngUtilityBasedDispatch:
         assert n == len(self.alt_ids) * self.sample_size
         return np.zeros(self.chooser_count * len(self.alt_ids) * self.sample_size)
 
-    def keyed_gumbel_for_df(self, _utilities, alt_nrs, consume_offsets=None):
+    def keyed_gumbel_for_df(
+        self, _utilities, alt_nrs, consume_offsets=None, draw_count=1
+    ):
         self.keyed_calls += 1
         expected_alt_nrs = np.broadcast_to(
             self.alt_ids, (self.chooser_count, len(self.alt_ids))
         )
         np.testing.assert_array_equal(alt_nrs, expected_alt_nrs)
         assert consume_offsets == len(self.alt_ids)
-        return np.zeros((self.chooser_count, len(self.alt_ids)))
+        assert draw_count == self.sample_size
+        return np.zeros((self.chooser_count, len(self.alt_ids), draw_count))
 
 
 def test_make_sample_choices_utility_based_repeat_alignment_chooser_dominant_heterogeneity():
@@ -328,7 +331,7 @@ def test_make_sample_choices_utility_based_repeat_alignment_chooser_dominant_het
 
 @pytest.mark.parametrize(
     ("eet_error_term_rng", "expected_gumbel_calls", "expected_keyed_calls"),
-    [("legacy_dense", 1, 0), ("keyed_hash", 0, 3)],
+    [("legacy_dense", 1, 0), ("keyed_hash", 0, 1)],
 )
 def test_make_sample_choices_utility_based_dispatches_rng_backend(
     eet_error_term_rng,

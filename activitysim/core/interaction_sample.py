@@ -68,17 +68,14 @@ def make_sample_choices_utility_based(
             alternatives.index.to_numpy(dtype=np.int64),
             (utilities.shape[0], alternative_count),
         )
-        rands = np.stack(
-            [
-                state.get_rn_generator().keyed_gumbel_for_df(
-                    utilities,
-                    alt_nrs,
-                    consume_offsets=alternative_count,
-                )
-                for _ in range(sample_size)
-            ],
-            axis=2,
+        rands = state.get_rn_generator().keyed_gumbel_for_df(
+            utilities,
+            alt_nrs,
+            consume_offsets=alternative_count,
+            draw_count=sample_size,
         )
+        if sample_size == 1:
+            rands = rands[:, :, np.newaxis]
     else:
         rands = state.get_rn_generator().gumbel_for_df(
             utilities, n=alternative_count * sample_size

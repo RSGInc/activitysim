@@ -308,7 +308,9 @@ class SimpleChannel(object):
         self.row_states.loc[df.index, "offset"] += n
         return rands
 
-    def keyed_gumbel_for_df(self, df, step_name, alt_nrs, consume_offsets=None):
+    def keyed_gumbel_for_df(
+        self, df, step_name, alt_nrs, consume_offsets=None, draw_count=1
+    ):
         """
         Return keyed EV1 error terms for the sampled alternatives in alt_nrs.
 
@@ -324,9 +326,12 @@ class SimpleChannel(object):
             raise ValueError("alt_nrs must be a 2-D array-like")
         if alt_nrs.shape[0] != len(df.index):
             raise ValueError("alt_nrs must have one row per chooser row in df")
+        if draw_count < 1:
+            raise ValueError("draw_count must be at least 1")
 
         if consume_offsets is None:
             consume_offsets = alt_nrs.shape[1]
+        consume_offsets = int(consume_offsets)
 
         df_row_states = self.row_states.loc[df.index]
 
@@ -334,25 +339,33 @@ class SimpleChannel(object):
         safe_alt_nrs = np.where(mask, 0, alt_nrs)
 
         row_seed = np.asarray(df_row_states["row_seed"].values, dtype=np.uint64)[
-            :, np.newaxis
+            :, np.newaxis, np.newaxis
         ]
         row_offset = np.asarray(df_row_states["offset"].values, dtype=np.uint64)[
-            :, np.newaxis
+            :, np.newaxis, np.newaxis
         ]
-        alt_state = np.asarray(safe_alt_nrs, dtype=np.uint64)
+        alt_state = np.asarray(safe_alt_nrs, dtype=np.uint64)[:, :, np.newaxis]
+        draw_offsets = (
+            np.arange(draw_count, dtype=np.uint64)
+            * np.uint64(consume_offsets)
+        )[np.newaxis, np.newaxis, :]
+        offset_state = row_offset + draw_offsets
 
         mixed = (
             row_seed * _HASH_MUL1
             + alt_state * _HASH_GOLDEN_GAMMA
             + _HASH_ALT_TAG
-            + row_offset * _HASH_MUL2
+            + offset_state * _HASH_MUL2
         ) & _MASK_64
         hashed = _splitmix64(mixed)
         uniforms = ((hashed >> np.uint64(11)).astype(np.float64)) * (1.0 / (1 << 53))
         rands = _uniforms_to_gumbel(uniforms)
-        rands[mask] = 0
+        rands = np.where(mask[:, :, np.newaxis], 0.0, rands)
 
-        self.row_states.loc[df.index, "offset"] += consume_offsets
+        self.row_states.loc[df.index, "offset"] += consume_offsets * draw_count
+
+        if draw_count == 1:
+            return rands[:, :, 0]
         return rands
 
     def normal_for_df(self, df, step_name, mu, sigma, lognormal=False, size=None):
@@ -794,13 +807,19 @@ class Random(object):
         rands = channel.gumbel_for_df(df, self.step_name, n)
         return rands
 
-    def keyed_gumbel_for_df(self, df, alt_nrs, consume_offsets=None):
+    def keyed_gumbel_for_df(
+        self, df, alt_nrs, consume_offsets=None, draw_count=1
+    ):
         """
         Return keyed EV1 error terms aligned to sampled alternative ids.
         """
         channel = self.get_channel_for_df(df)
         return channel.keyed_gumbel_for_df(
-            df, self.step_name, alt_nrs, consume_offsets=consume_offsets
+            df,
+            self.step_name,
+            alt_nrs,
+            consume_offsets=consume_offsets,
+            draw_count=draw_count,
         )
 
     def normal_for_df(self, df, mu=0, sigma=1, broadcast=False, size=None):
