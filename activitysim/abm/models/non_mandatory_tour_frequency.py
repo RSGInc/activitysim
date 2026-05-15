@@ -456,10 +456,10 @@ def non_mandatory_tour_frequency(
                 )
             ]
 
-        # assert len(non_mandatory_survey_tours) == len(non_mandatory_tours)
-        # assert non_mandatory_survey_tours.index.equals(
-        #     non_mandatory_tours.sort_index().index
-        # )
+        assert len(non_mandatory_survey_tours) == len(non_mandatory_tours)
+        assert non_mandatory_survey_tours.index.equals(
+            non_mandatory_tours.sort_index().index
+        )
 
         # drop problem survey tour households
         problem_households = non_mandatory_survey_tours.loc[

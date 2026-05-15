@@ -638,11 +638,12 @@ def school_escorting(
         ]
         school_escort_trips = pd.DataFrame(columns=trip_cols)
 
+    purpose_dtype = state.get_dataframe("tours")["tour_type"].dtype.name
     school_escort_trips["primary_purpose"] = school_escort_trips[
         "primary_purpose"
-    ].astype(state.get_dataframe("tours")["tour_type"].dtype)
+    ].astype(purpose_dtype)
     school_escort_trips["purpose"] = school_escort_trips["purpose"].astype(
-        state.get_dataframe("tours")["tour_type"].dtype
+        purpose_dtype
     )
 
     # update pipeline
