@@ -181,3 +181,46 @@ def test_channel(channel_type: Literal["simple", "fast", "faster"]):
     npt.assert_almost_equal(np.asanyarray(rands).flatten(), test1_expected_rands2)
 
     rng.end_step("test_step")
+
+
+@pytest.mark.parametrize("channel_type", ["simple", "fast", "faster"])
+def test_lognormal_for_df_single_draw_is_1d(
+    channel_type: Literal["simple", "fast", "faster"]
+):
+    rng = random.Random(channel_type=channel_type)
+
+    persons = pd.DataFrame(index=pd.Index([1, 2, 3], name="person_id"))
+
+    rng.begin_step("test_step")
+    rng.add_channel("persons", persons)
+
+    mu = pd.Series([1.0, 1.1, 1.2], index=persons.index)
+    sigma = pd.Series([0.2, 0.3, 0.4], index=persons.index)
+
+    rands = rng.lognormal_for_df(persons, mu=mu, sigma=sigma, scale=True)
+
+    assert np.asarray(rands).shape == (3,)
+
+    rng.end_step("test_step")
+
+
+@pytest.mark.parametrize("channel_type", ["simple", "fast", "faster"])
+def test_reset_offsets_for_step_rewinds_stream(
+    channel_type: Literal["simple", "fast", "faster"]
+):
+    rng = random.Random(channel_type=channel_type)
+
+    persons = pd.DataFrame(index=pd.Index([1, 2, 3], name="person_id"))
+
+    rng.begin_step("test_step")
+    rng.add_channel("persons", persons)
+
+    first = np.asarray(rng.random_for_df(persons)).copy()
+    second = np.asarray(rng.random_for_df(persons)).copy()
+    assert not np.array_equal(first, second)
+
+    rng.reset_offsets_for_step("test_step")
+    rewound = np.asarray(rng.random_for_df(persons)).copy()
+    npt.assert_allclose(rewound, first)
+
+    rng.end_step("test_step")

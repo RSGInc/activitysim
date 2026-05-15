@@ -263,6 +263,22 @@ class FastChannel:
         self.step_seed = None
         self._state_array = None
 
+    def reset_offsets_for_step(self) -> None:
+        """Reset all per-row streams to the start of the current step."""
+        if self.step_name is None:
+            raise ValueError("outside of a defined step")
+        self._reseed_step(force=True)
+
+    def reset_offsets_for_df(self, df: pd.DataFrame) -> None:
+        """Reset per-row streams for a subset of the current channel domain."""
+        if self.step_name is None:
+            raise ValueError("outside of a defined step")
+        selected_positions = self._check_valid_df(df)
+        self._reseed_step()
+        self._state_array[selected_positions] = self._batch_init_states(
+            [self.base_seed, self.channel_seed, self.step_seed], df.index
+        )
+
     def _check_valid_df(self, df: pd.DataFrame) -> np.ndarray:
         """
         Validate *df* against the channel's domain and return row positions.
@@ -314,7 +330,7 @@ class FastChannel:
         mu: float | np.ndarray = 0,
         sigma: float | np.ndarray = 1,
         lognormal: bool = False,
-        size: int | tuple[int, ...] = 1,
+        size: int | tuple[int, ...] | None = None,
     ) -> np.ndarray:
         """
         Draw normal (or lognormal) random variates for each row in *df*.
@@ -344,7 +360,8 @@ class FastChannel:
             parameters.  Defaults to ``False``.
         size : int or tuple of int, optional
             Number of draws per agent.  A plain ``int`` *k* yields *k* draws
-            per row; a tuple gives the per-row shape.  Defaults to ``1``.
+            per row; a tuple gives the per-row shape. If omitted, returns a
+            single draw per row as a 1-D result.
 
         Returns
         -------
@@ -363,6 +380,7 @@ class FastChannel:
         assert step_name == self.step_name
         selected_positions = self._check_valid_df(df)
         self._reseed_step()
+        flatten_single_draw = size is None
         if size is None:
             size = 1
 
@@ -371,6 +389,8 @@ class FastChannel:
         result = self._fast_generator.vector_random_standard_normal(
             self._state_array, selected_positions=selected_positions, shape=size
         )
+        if flatten_single_draw:
+            result = result[:, 0]
         result = result * sigma + mu
         if lognormal:
             result = np.exp(result)
@@ -420,6 +440,44 @@ class FastChannel:
         return self._fast_generator.vector_random_standard_uniform(
             self._state_array, selected_positions=selected_positions, shape=n
         )
+
+    def gumbel_for_df(
+        self,
+        df: pd.DataFrame,
+        step_name: str,
+        n: int | tuple[int, ...] = 1,
+    ) -> np.ndarray:
+        """
+        Draw standard-gumbel random variates for each row in *df*.
+
+        Uses the vectorised uniform generator and applies the same
+        ``-log(-log(u))`` transform used by the simple channel.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            DataFrame whose index selects which agents receive draws. Columns
+            are ignored.
+        step_name : str
+            Name of the currently active step; checked for consistency.
+        n : int or tuple of int, optional
+            Number of draws per agent. A plain ``int`` *k* yields *k* draws
+            per row; a tuple gives the per-row shape. Defaults to ``1``.
+
+        Returns
+        -------
+        rands : numpy.ndarray
+            Array of shape ``(len(df), *n)`` with values in the standard
+            gumbel distribution.
+        """
+        assert step_name is not None
+        assert step_name == self.step_name
+        selected_positions = self._check_valid_df(df)
+        self._reseed_step()
+        rands = self._fast_generator.vector_random_standard_uniform(
+            self._state_array, selected_positions=selected_positions, shape=n
+        )
+        return -np.log(-np.log(rands))
 
     def choice_for_df(
         self,

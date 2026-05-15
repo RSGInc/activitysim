@@ -299,7 +299,7 @@ class TestNormalForDf:
         ch.begin_step("s")
         df = _make_df([1, 2, 3])
         result = ch.normal_for_df(df, "s")
-        assert result.shape == (3, 1)
+        assert result.shape == (3,)
 
     def test_output_shape_with_size(self):
         ch = _make_channel()
@@ -346,9 +346,18 @@ class TestNormalForDf:
         ch = _make_channel()
         ch.begin_step("s")
         df = _make_df([1, 2, 3, 4, 5])
-        # should not raise; shape should still be (5, 1)
+        # should not raise; shape should still be 1-D
         result = ch.normal_for_df(df, "s", mu=5.0, sigma=2.0)
-        assert result.shape == (5, 1)
+        assert result.shape == (5,)
+
+    def test_rowwise_mu_sigma_remain_1d(self):
+        ch = _make_channel()
+        ch.begin_step("s")
+        df = _make_df([1, 2, 3, 4, 5])
+        mu = np.asarray([1.0, 1.1, 1.2, 1.3, 1.4])
+        sigma = np.asarray([0.2, 0.3, 0.4, 0.5, 0.6])
+        result = ch.normal_for_df(df, "s", mu=mu, sigma=sigma, lognormal=True)
+        assert result.shape == (5,)
 
     def test_lognormal_vs_normal_exp_relationship(self):
         """exp(normal_for_df) should equal lognormal_for_df for same step."""
@@ -361,6 +370,23 @@ class TestNormalForDf:
         r_normal = ch_n.normal_for_df(df, "s", mu=0, sigma=1, lognormal=False)
         r_lognormal = ch_l.normal_for_df(df, "s", mu=0, sigma=1, lognormal=True)
         npt.assert_allclose(np.exp(r_normal), r_lognormal)
+
+
+class TestGumbelForDf:
+    def test_output_shape(self):
+        ch = _make_channel()
+        ch.begin_step("s")
+        df = _make_df([1, 2, 3])
+        result = ch.gumbel_for_df(df, "s")
+        assert result.shape == (3, 1)
+
+    def test_successive_calls_advance_stream(self):
+        ch = _make_channel()
+        ch.begin_step("s")
+        df = _make_df([1, 2, 3])
+        r1 = ch.gumbel_for_df(df, "s").copy()
+        r2 = ch.gumbel_for_df(df, "s").copy()
+        assert not np.array_equal(r1, r2)
 
 
 # ---------------------------------------------------------------------------

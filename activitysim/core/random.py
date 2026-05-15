@@ -172,6 +172,12 @@ class SimpleChannel(object):
         self.row_states["offset"] = 0
         self.row_states["row_seed"] = 0
 
+    def reset_offsets_for_step(self):
+        self.row_states["offset"] = 0
+
+    def reset_offsets_for_df(self, df):
+        self.row_states.loc[df.index, "offset"] = 0
+
     def _generators_for_df(self, df):
         """
         Python generator function for iterating over numpy prngs (nomenclature collision!)
@@ -465,7 +471,7 @@ class Random(object):
         assert self.step_name == step_name
 
         for c in self.channels:
-            self.channels[c].row_states["offset"] = 0
+            self.channels[c].reset_offsets_for_step()
 
     def reset_offsets_for_df(self, df):
         """
@@ -479,10 +485,10 @@ class Random(object):
             df with index name and values corresponding to a registered channel
         """
         channel = self.get_channel_for_df(df)
-        channel.row_states.loc[df.index, "offset"] = 0
+        channel.reset_offsets_for_df(df)
         logger.info(
             f"RNG: resetting random number generator offsets for channel '{channel.channel_name}' for {len(df)} rows"
-            + f" with index name '{df.index.name}'. Total lenght df: {len(channel.row_states)}"
+            + f" with index name '{df.index.name}'."
         )
 
     def begin_step(self, step_name):
