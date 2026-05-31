@@ -474,10 +474,11 @@ class FastChannel:
         assert step_name == self.step_name
         selected_positions = self._check_valid_df(df)
         self._reseed_step()
-        rands = self._fast_generator.vector_random_standard_uniform(
-            self._state_array, selected_positions=selected_positions, shape=n
+        return self._fast_generator.vector_random_standard_gumbel(
+            self._state_array,
+            selected_positions=selected_positions,
+            shape=n,
         )
-        return -np.log(-np.log(rands))
 
     def choice_for_df(
         self,
