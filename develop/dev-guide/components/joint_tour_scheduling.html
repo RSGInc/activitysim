@@ -65,7 +65,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="1.5.2" />
-    <meta name="docbuild:last-update" content="Jul 21, 2026"/>
+    <meta name="docbuild:last-update" content="Aug 13, 2026"/>
   </head>
   
   
@@ -373,6 +373,8 @@
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="../../core.html">Core Components</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../explicit-error-terms.html">Explicit Error Terms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../sampling-methods.html">Sampling Methods for Interaction Sample</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../benchmarking.html">Benchmarking</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../build-docs.html">Documentation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../changes.html">Change Log</a></li>
@@ -439,7 +441,7 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="joint-tour-scheduling">
+  <section class="tex2jax_ignore mathjax_ignore" id="joint-tour-scheduling">
 <span id="component-joint-tour-scheduling"></span><h1>Joint Tour Scheduling<a class="headerlink" href="#joint-tour-scheduling" title="Permalink to this heading">#</a></h1>
 <p>The joint tour scheduling model selects a tour departure and duration period (and therefore a start and end
 period as well) for each joint tour.  This model uses person <a class="reference internal" href="../../core.html#time-windows"><span class="std std-ref">time_windows</span></a>. The primary drivers in the
@@ -765,7 +767,7 @@ additional attributes that are derived from the model results.</p>
 
 <dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="activitysim.abm.models.joint_tour_scheduling.TourSchedulingSettings.compute_settings">
-<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">compute_settings</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ComputeSettings</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">ComputeSettings(sharrow_skip=False,</span> <span class="pre">fastmath=False,</span> <span class="pre">use_bottleneck=None,</span> <span class="pre">use_numexpr=None,</span> <span class="pre">use_numba=None,</span> <span class="pre">drop_unused_columns=True,</span> <span class="pre">protect_columns=[],</span> <span class="pre">performance_log=None)</span></em><a class="headerlink" href="#activitysim.abm.models.joint_tour_scheduling.TourSchedulingSettings.compute_settings" title="Permalink to this definition">#</a></dt>
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">compute_settings</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ComputeSettings</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">ComputeSettings(sample_method=None,</span> <span class="pre">sharrow_skip=False,</span> <span class="pre">fastmath=False,</span> <span class="pre">use_bottleneck=None,</span> <span class="pre">use_numexpr=None,</span> <span class="pre">use_numba=None,</span> <span class="pre">drop_unused_columns=True,</span> <span class="pre">protect_columns=[],</span> <span class="pre">performance_log=None)</span></em><a class="headerlink" href="#activitysim.abm.models.joint_tour_scheduling.TourSchedulingSettings.compute_settings" title="Permalink to this definition">#</a></dt>
 <dd><p>Sharrow settings for this component.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Validated by<span class="colon">:</span></dt>
@@ -973,7 +975,7 @@ of any model.</p>
       
         <div class="footer-item"><!-- This will display the version of the docs -->
 <p class="last-updated">
-ActivitySim 1.5.2.dev20+gaa1a3ff1c, documentation last updated Jul 21, 2026.<br/>
+ActivitySim 1.5.2.dev28+g2b73d5a8b, documentation last updated Aug 13, 2026.<br/>
 </p></div>
       
         <div class="footer-item">
