@@ -206,7 +206,7 @@ def create_school_escorting_bundles_table(choosers, tours, stage):
     bundles["chauf_type_num"] = 0
 
     # getting bundle school start times and locations
-    school_tours = tours[(tours.tour_type == "school") & (tours.tour_num == 1)]
+    school_tours = tours[(tours.tour_type == "school") & (tours.tour_type_num == 1)]
 
     school_starts = school_tours.set_index("person_id").start
     school_ends = school_tours.set_index("person_id").end
