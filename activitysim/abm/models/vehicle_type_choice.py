@@ -389,16 +389,51 @@ def iterate_vehicle_type_choice(
         body_type_cat = pd.api.types.CategoricalDtype(
             sorted(alts_cats_dict["body_type"]), ordered=False
         )
-        fuel_type_cat = pd.api.types.CategoricalDtype(
-            sorted(alts_cats_dict["fuel_type"]), ordered=False
-        )
-        vehicle_type_cat = pd.api.types.CategoricalDtype(
-            sorted(set(alts_wide["vehicle_type"])), ordered=False
-        )
-
         alts_wide["body_type"] = alts_wide["body_type"].astype(body_type_cat)
-        alts_wide["fuel_type"] = alts_wide["fuel_type"].astype(fuel_type_cat)
-        alts_wide["vehicle_type"] = alts_wide["vehicle_type"].astype(vehicle_type_cat)
+
+        # option 2 using probabilities may not have fuel_type or vehicle_type in alts
+        if "fuel_type" in alts_wide.columns:
+            fuel_type_cat = pd.api.types.CategoricalDtype(
+                sorted(alts_cats_dict["fuel_type"]), ordered=False
+            )
+            alts_wide["fuel_type"] = alts_wide["fuel_type"].astype(fuel_type_cat)
+
+        if probs_spec_file is not None:
+            # need to read probs spec to see fuel type alternatives and add all possible combinations
+            probs_spec = pd.read_csv(
+                state.filesystem.get_config_file_path(probs_spec_file), comment="#"
+            )
+            non_prob_cols = {"body_type", "vehicle_year", "age", "vehicle_type"}
+            fuel_type_options = sorted(
+                col for col in probs_spec.columns if col not in non_prob_cols
+            )
+            base_vehicle_types = (
+                alts_long[["body_type", "age"]]
+                .astype(str)
+                .agg("_".join, axis=1)
+                .unique()
+            )
+            vehicle_type_options = sorted(
+                f"{base_vehicle_type}_{fuel_type}"
+                for base_vehicle_type in base_vehicle_types
+                for fuel_type in fuel_type_options
+            )
+            vehicle_type_options.extend(
+                sorted(
+                    f"{base_vehicle_type}_NOT CHOSEN"
+                    for base_vehicle_type in base_vehicle_types
+                )
+            )
+            vehicle_type_cat = pd.api.types.CategoricalDtype(
+                vehicle_type_options, ordered=False
+            )
+        elif "vehicle_type" in alts_wide.columns:
+            vehicle_type_cat = pd.api.types.CategoricalDtype(
+                sorted(set(alts_wide["vehicle_type"])), ordered=False
+            )
+            alts_wide["vehicle_type"] = alts_wide["vehicle_type"].astype(
+                vehicle_type_cat
+            )
     else:
         alts_wide = alts_long = None
         alts = model_spec.columns
@@ -657,7 +692,8 @@ def vehicle_type_choice(
         state, model_spec_raw, coefficients_df, estimator
     )
 
-    constants = config.get_model_constants(model_settings)
+    constants = state.get_global_constants()
+    constants.update(config.get_model_constants(model_settings))
 
     locals_dict = {}
     locals_dict.update(constants)
