@@ -592,8 +592,12 @@ def replace_school_escort_trips_with_survey_trips(school_escort_trips):
     survey_trips = estimation.manager.get_survey_table("trips")
     survey_tours = estimation.manager.get_survey_table("tours")
 
-    survey_trips.loc[survey_trips.outbound,"chauf_tour_id"] = survey_trips.tour_id.map(survey_tours.out_chauffeur_tour_id)
-    survey_trips.loc[~survey_trips.outbound,"chauf_tour_id"] = survey_trips.tour_id.map(survey_tours.inb_chauffeur_tour_id)
+    survey_trips.loc[survey_trips.outbound, "chauf_tour_id"] = survey_trips.tour_id.map(
+        survey_tours.out_chauffeur_tour_id
+    )
+    survey_trips.loc[
+        ~survey_trips.outbound, "chauf_tour_id"
+    ] = survey_trips.tour_id.map(survey_tours.inb_chauffeur_tour_id)
 
     required_cols = [
         "household_id",
