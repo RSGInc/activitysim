@@ -676,7 +676,7 @@ def add_pure_escort_tours(tours, school_escort_tours):
 
 
 def add_school_escorting_type_to_tours_table(escort_bundles, tours):
-    school_tour = (tours.tour_type == "school") & (tours.tour_num == 1)
+    school_tour = (tours.tour_type == "school") & (tours.tour_type_num == 1)
 
     escort_type_cat = pd.api.types.CategoricalDtype(
         ["pure_escort", "ride_share"], ordered=False
