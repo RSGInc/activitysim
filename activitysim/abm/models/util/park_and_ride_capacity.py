@@ -1,11 +1,14 @@
-import pandas as pd
-import numpy as np
+from __future__ import annotations
+
 import ctypes
 import logging
 import multiprocessing as mp
 import time
 
-from activitysim.core import util, logit, tracing
+import numpy as np
+import pandas as pd
+
+from activitysim.core import logit, tracing, util
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +35,11 @@ class ParkAndRideCapacity:
             self.shared_pnr_choice_idx = data_buffers["shared_pnr_choice_idx"]
             self.shared_pnr_choice_start = data_buffers["shared_pnr_choice_start"]
             self.pnr_mp_tally = data_buffers["pnr_mp_tally"]
+            # pnr_mp_tally layout: [0] = arrival_count, [1] = generation
+            # Each logical barrier call advances the generation by 1.
+            # The _local_phase tracker ensures each process waits on the
+            # correct generation for its current barrier invocation.
+            self._local_phase = self.pnr_mp_tally[1]
         else:
             assert (
                 self.num_processes == 1
@@ -40,6 +48,7 @@ class ParkAndRideCapacity:
             self.shared_pnr_choice_idx = None
             self.shared_pnr_choice_start = None
             self.pnr_mp_tally = None
+            self._local_phase = 0
 
         # occupancy counts for pnr zones is populated from choices synced across processes
         self.shared_pnr_occupancy_df = pd.DataFrame(
@@ -58,8 +67,6 @@ class ParkAndRideCapacity:
         ----------
         choices : pandas.Series
             zone id of location choice indexed by person_id
-        segment_ids : pandas.Series
-            segment id tag for this individual indexed by person_id
 
         Returns
         -------
@@ -119,33 +126,7 @@ class ParkAndRideCapacity:
         ), "shared_pnr_choice_idx is not set"
         assert self.num_processes > 1, "num_processes must be greater than 1"
 
-        # barrier implemented with arrival count (idx 0) and generation (idx 1)
-        # cannot just use mp.barrier() because we do not know how many processes
-        # there will be when the tour mode choice iteration with pnr begins
-        def barrier(reset_callback=None):
-            while True:
-                with self.pnr_mp_tally.get_lock():
-                    gen = self.pnr_mp_tally[1]
-                    self.pnr_mp_tally[0] += 1  # arrived
-                    if self.pnr_mp_tally[0] == self.num_processes:
-                        # last to arrive
-                        if reset_callback is not None:
-                            reset_callback()
-                        # release all waiters by advancing generation and resetting arrival count
-                        self.pnr_mp_tally[0] = 0
-                        self.pnr_mp_tally[1] = gen + 1
-                        return
-                    # not last; remember current generation to wait on
-                    wait_gen = gen
-                # spin until generation changes
-                while True:
-                    with self.pnr_mp_tally.get_lock():
-                        if self.pnr_mp_tally[1] != wait_gen:
-                            break
-                    time.sleep(1)
-                return
-
-        # can send in empty chocies to ensure all subprocesses will hit the barrier
+        # can send in empty choices to ensure all subprocesses will hit the barrier
         if not choices.empty:
             with self.shared_pnr_choice.get_lock():
                 # first_in = self.pnr_mp_tally[0] == 0
@@ -175,8 +156,13 @@ class ParkAndRideCapacity:
                 # sort by index (tour_id)
                 synced_choices = synced_choices.sort_index()
 
-                # now append any additional rows need to get size back to original length
                 pad = len(self.shared_pnr_choice) - len(synced_choices)
+                if pad < 0:
+                    raise RuntimeError(
+                        f"PNR shared buffer overflow: {len(synced_choices)} tours exceed "
+                        f"buffer size {len(self.shared_pnr_choice)}. Increase the buffer "
+                        "by setting it to at least the number of PNR tours in your population."
+                    )
                 new_arr_values = np.concatenate(
                     [
                         synced_choices["pnr_zone_id"].to_numpy(np.int64),
@@ -202,7 +188,7 @@ class ParkAndRideCapacity:
                 self.shared_pnr_choice_start[:] = new_arr_start.tolist()
 
         # Wait for all processes to finish writing
-        barrier()
+        self._barrier()
 
         # need to create the final synced_choices again since other processes may have written to the shared memory
         # don't need the lock since we are only reading at this stage
@@ -232,9 +218,36 @@ class ParkAndRideCapacity:
                 len(self.shared_pnr_choice_start), dtype=np.int64
             ).tolist()
 
-        barrier(reset_callback=reset_arrays)
+        self._barrier(reset_callback=reset_arrays)
 
         return synced_choices
+
+    def _barrier(self, reset_callback=None):
+        """
+        Generation-based barrier that is safe for repeated invocations.
+
+        Each process tracks its own expected phase (_local_phase).
+        The shared counter advances monotonically, so sequential barrier
+        calls from different logical synchronization points cannot collide.
+        """
+        expected_gen = self._local_phase
+        with self.pnr_mp_tally.get_lock():
+            self.pnr_mp_tally[0] += 1  # arrive
+            if self.pnr_mp_tally[0] == self.num_processes:
+                # last to arrive — release everyone
+                if reset_callback is not None:
+                    reset_callback()
+                self.pnr_mp_tally[0] = 0
+                self.pnr_mp_tally[1] = expected_gen + 1
+                self._local_phase = expected_gen + 1
+                return
+        # not last — spin until generation advances past expected_gen
+        while True:
+            with self.pnr_mp_tally.get_lock():
+                if self.pnr_mp_tally[1] > expected_gen:
+                    self._local_phase = expected_gen + 1
+                    return
+            time.sleep(0.01)
 
     def scale_pnr_capacity(self, state):
         """
@@ -339,32 +352,50 @@ class ParkAndRideCapacity:
             )
 
         elif self.model_settings.RESAMPLE_STRATEGY == "random":
-            # first determine sample rate for each zone
-            zonal_sample_rate = (
-                self.shared_pnr_occupancy_df["pnr_occupancy"]
-                / self.scaled_pnr_capacity_df["pnr_capacity"]
+            occupancy = self.shared_pnr_occupancy_df["pnr_occupancy"]
+            capacity = self.scaled_pnr_capacity_df["pnr_capacity"]
+            # Sample the excess share of occupants so the expected number
+            # selected is the number of tours above capacity.
+            zonal_sample_rate = ((occupancy - capacity) / occupancy).clip(
+                lower=0, upper=1
             )
-            zonal_sample_rate = zonal_sample_rate[zonal_sample_rate > 1]
-            zonal_sample_rate = (zonal_sample_rate - 1).clip(lower=0, upper=1)
 
-            # person's probability of being selected for re-simulation is from the zonal sample rate
-            sample_rates = tours_in_cap_zones.pnr_zone_id.map(
+            # Draw only for this process's tours; its RNG channel does not own
+            # tour IDs synchronized from the other processes.
+            local_tours_in_cap_zones = tours_in_cap_zones[
+                tours_in_cap_zones.index.isin(choosers.index)
+            ]
+
+            # tours in capacitated but not over-capacity zones get 0 resample probability
+            sample_rates = local_tours_in_cap_zones.pnr_zone_id.map(
                 zonal_sample_rate.to_dict()
-            )
+            ).fillna(0)
             probs = pd.DataFrame(
-                data={"0": 1 - sample_rates, "1": sample_rates},
-                index=tours_in_cap_zones.index,
+                data={0: 1 - sample_rates, 1: sample_rates},
+                index=local_tours_in_cap_zones.index,
             )
             # using ActivitySim's RNG to make choices for repeatability
-            current_sample, rands = logit.make_choices(state, probs)
-            current_sample = current_sample[current_sample == 1]
+            if probs.empty:
+                # An empty worker still participates in synchronization below,
+                # but has no RNG-owned tours from which to draw.
+                current_sample = pd.Series(index=probs.index, dtype=np.int64)
+            else:
+                current_sample, rands = logit.make_choices(state, probs)
+                current_sample = current_sample[current_sample == 1]
 
             # filtering choosers to only those tours selected for resimulation in this subprocess
             choosers = choosers[choosers.index.isin(current_sample.index)]
 
+            selected_tours = local_tours_in_cap_zones.loc[current_sample.index]
+            if self.num_processes > 1:
+                # Synchronize local random draws so every process removes the
+                # same global selections from its occupancy accounting.
+                selected_tours = self.synchronize_choices(selected_tours)
+
             # count the total number of pnr choices being resimulated
             pnr_counts = (
-                current_sample.pnr_zone_id.value_counts()
+                selected_tours["pnr_zone_id"]
+                .value_counts()
                 .reindex(self.shared_pnr_occupancy_df.index)
                 .fillna(0)
                 .astype(int)

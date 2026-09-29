@@ -565,7 +565,7 @@ def new_flow(
     zone_layer : {'taz', 'maz'}, default 'taz'
         Specify which zone layer of the skims is to be used.  You cannot use the
         'maz' zone layer in a one-zone model, but you can use the 'taz' layer in
-        a two- or three-zone model (e.g. for destination pre-sampling).
+        a two-zone model (e.g. for destination pre-sampling).
     aux_vars : Mapping
         Extra values that are available to expressions and which are written
         only by reference into compiled code (and thus can be changed later).
@@ -845,7 +845,7 @@ def apply_flow(
     zone_layer : {'taz', 'maz'}, default 'taz'
         Specify which zone layer of the skims is to be used.  You cannot use the
         'maz' zone layer in a one-zone model, but you can use the 'taz' layer in
-        a two- or three-zone model (e.g. for destination pre-sampling).
+        a two-zone model (e.g. for destination pre-sampling).
     compute_settings : ComputeSettings, optional
         Settings for the sharrow flow, including for skipping and fastmath.
 
@@ -864,8 +864,10 @@ def apply_flow(
     """
     if sh is None:
         return None, None
-    if locals_d is None:
-        locals_d = {}
+
+    # Global constants are always available, but can be overridden by locals_d.
+    locals_d = {**state.get_global_constants(), **(locals_d or {})}
+
     with logtime("apply_flow"):
         try:
             flow = get_flow(

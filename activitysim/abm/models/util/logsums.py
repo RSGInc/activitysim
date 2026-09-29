@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 
 import pandas as pd
+from pydantic import BaseModel as PydanticBase
 
 from activitysim.core import config, expressions, los, simulate, tracing, workflow
-from activitysim.core.configuration import PydanticBase
 from activitysim.core.configuration.logit import (
     TourLocationComponentSettings,
     TourModeComponentSettings,
@@ -130,31 +130,6 @@ def setup_skims(
                 "ld_skims": ld_skim_stack_wrapper,
                 "pnr_lot_dest_col_name": pnr_lot_dest_col_name,
             }
-        )
-
-    if network_los.zone_system == los.THREE_ZONE:
-        # fixme - is this a lightweight object?
-        tvpb = network_los.tvpb
-
-        tvpb_logsum_odt = tvpb.wrap_logsum(
-            orig_key=orig_col_name,
-            dest_key=dest_col_name,
-            tod_key="out_period",
-            segment_key="demographic_segment",
-            trace_label=None,
-            tag="tvpb_logsum_odt",
-        )
-        tvpb_logsum_dot = tvpb.wrap_logsum(
-            orig_key=dest_col_name,
-            dest_key=orig_col_name,
-            tod_key="in_period",
-            segment_key="demographic_segment",
-            trace_label=None,
-            tag="tvpb_logsum_dot",
-        )
-
-        skims.update(
-            {"tvpb_logsum_odt": tvpb_logsum_odt, "tvpb_logsum_dot": tvpb_logsum_dot}
         )
 
     # add time periods to skims if requested

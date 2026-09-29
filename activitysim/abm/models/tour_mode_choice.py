@@ -7,28 +7,28 @@ import logging
 import numpy as np
 import pandas as pd
 
+from activitysim.abm.models.park_and_ride_lot_choice import (
+    ParkAndRideLotChoiceSettings,
+    run_park_and_ride_lot_choice,
+)
 from activitysim.abm.models.util import (
-    school_escort_tours_trips,
-    trip,
     logsums,
     park_and_ride_capacity,
+    school_escort_tours_trips,
+    trip,
 )
 from activitysim.abm.models.util.mode import run_tour_mode_choice_simulate
 from activitysim.core import (
     config,
     estimation,
+    expressions,
     logit,
     los,
     simulate,
     tracing,
     workflow,
-    expressions,
 )
 from activitysim.core.configuration.logit import TourModeComponentSettings
-from activitysim.abm.models.park_and_ride_lot_choice import (
-    ParkAndRideLotChoiceSettings,
-    run_park_and_ride_lot_choice,
-)
 from activitysim.core.util import assign_in_place, reindex
 
 logger = logging.getLogger(__name__)
@@ -259,12 +259,6 @@ def tour_mode_choice_simulate(
         trace_label=trace_label,
     )
 
-    # TVPB constants can appear in expressions
-    if (network_los.zone_system == los.THREE_ZONE) & model_settings.use_TVPB_constants:
-        constants.update(
-            network_los.setting("TVPB_SETTINGS.tour_mode_choice.CONSTANTS")
-        )
-
     # don't create estimation data bundle if trip mode choice is being called
     # from another model step (i.e. tour mode choice logsum creation)
     if state.get_rn_generator().step_name != "tour_mode_choice_simulate":
@@ -345,10 +339,6 @@ def tour_mode_choice_simulate(
                 )
             )
 
-            if network_los.zone_system == los.THREE_ZONE:
-                skims["tvpb_logsum_odt"].extend_trace_label(tour_purpose)
-                skims["tvpb_logsum_dot"].extend_trace_label(tour_purpose)
-
             # name index so tracing knows how to slice
             assert tours_segment.index.name == "tour_id"
 
@@ -376,6 +366,12 @@ def tour_mode_choice_simulate(
             choices_list.append(choices_df)
 
         choices_i = pd.concat(choices_list)
+
+        # Keep the lot used for this iteration with its mode result so an
+        # iteratively reselected lot is written back to the tours table.
+        if "pnr_zone_id" in choosers:
+            choices_i["pnr_zone_id"] = choosers["pnr_zone_id"].reindex(choices_i.index)
+
         if final_choices is None:
             final_choices = choices_i.copy()
         else:
@@ -385,8 +381,6 @@ def tour_mode_choice_simulate(
         if (max_iterations > 1) and (i < max_iterations - 1):
             # need to update the park-and-ride lot capacities and select new choosers
             pnr_capacity_cls.iteration = i
-            # grabbing pnr_zone_id to calculate capacities
-            choices_i["pnr_zone_id"] = choosers["pnr_zone_id"].reindex(choices_i.index)
             # grabbing start time to help determine which tours need to get resimulated
             choices_i["start"] = choosers["start"].reindex(choices_i.index)
             pnr_capacity_cls.set_choices(choices_i)
@@ -397,7 +391,9 @@ def tour_mode_choice_simulate(
                 )
                 if pnr_capacity_cls.num_processes > 1:
                     # need to have this subprocess check-in still to satisfy barrier in synchronize_choices
-                    for j in range(i, max_iterations):
+                    # start at i+1 because iteration i's set_choices was already called above
+                    # stop at max_iterations-1 because the last iteration never enters this if-block
+                    for j in range(i + 1, max_iterations - 1):
                         dummy_choices = pd.DataFrame(columns=choices_i.columns)
                         pnr_capacity_cls.set_choices(dummy_choices)
                 break
@@ -418,32 +414,6 @@ def tour_mode_choice_simulate(
             choosers.drop(
                 columns=["out_period", "in_period"], errors="ignore", inplace=True
             )
-
-    # add cached tvpb_logsum tap choices for modes specified in tvpb_mode_path_types
-    if network_los.zone_system == los.THREE_ZONE:
-        tvpb_mode_path_types = model_settings.tvpb_mode_path_types
-        if tvpb_mode_path_types is not None:
-            for mode, path_types in tvpb_mode_path_types.items():
-                for direction, skim in zip(
-                    ["od", "do"], [skims["tvpb_logsum_odt"], skims["tvpb_logsum_dot"]]
-                ):
-                    path_type = path_types[direction]
-                    skim_cache = skim.cache[path_type]
-
-                    print(f"mode {mode} direction {direction} path_type {path_type}")
-
-                    for c in skim_cache:
-                        dest_col = f"{direction}_{c}"
-
-                        if dest_col not in final_choices:
-                            final_choices[dest_col] = (
-                                np.nan
-                                if pd.api.types.is_numeric_dtype(skim_cache[c])
-                                else ""
-                            )
-                        final_choices[dest_col].where(
-                            final_choices.tour_mode != mode, skim_cache[c], inplace=True
-                        )
 
     if estimator:
         estimator.write_choices(final_choices.tour_mode)

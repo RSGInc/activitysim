@@ -3,23 +3,26 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
+from pydantic import field_validator
 
+from activitysim.abm.models.park_and_ride_lot_choice import run_park_and_ride_lot_choice
 from activitysim.abm.models.tour_mode_choice import TourModeComponentSettings
+from activitysim.abm.models.util.logsums import setup_skims
 from activitysim.core import chunk, config, expressions, los, simulate
 from activitysim.core import timetable as tt
 from activitysim.core import tracing, workflow
 from activitysim.core.configuration.base import ComputeSettings, PreprocessorSettings
 from activitysim.core.configuration.logit import LogitComponentSettings
 from activitysim.core.interaction_sample_simulate import interaction_sample_simulate
+from activitysim.core.logit import AltsContext
 from activitysim.core.util import reindex
-from activitysim.abm.models.util.logsums import setup_skims
-from activitysim.abm.models.park_and_ride_lot_choice import run_park_and_ride_lot_choice
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +47,26 @@ class TourSchedulingSettings(LogitComponentSettings, extra="forbid"):
     it is assumed to be an unsegmented preprocessor.  Otherwise, the dict keys
     give the segements.
     """
-    SIMULATE_CHOOSER_COLUMNS: list[str] | None = None
+    SIMULATE_CHOOSER_COLUMNS: Any | None = None
+    """Was used to help reduce the memory needed for the model.
+
+    This setting is now obsolete and does nothing. Its functionality has been
+    replaced by :func:`activitysim.core.util.drop_unused_columns`.
+
+    .. deprecated:: 1.6
+    """
+
+    @field_validator("SIMULATE_CHOOSER_COLUMNS", mode="before")
+    @classmethod
+    def _deprecate_simulate_chooser_columns(cls, value):
+        if value is not None:
+            warnings.warn(
+                "SIMULATE_CHOOSER_COLUMNS is deprecated and no longer used, "
+                "unused columns are now dropped automatically",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        return None
 
     SPEC_SEGMENTS: dict[str, LogitComponentSettings] = {}
 
@@ -92,6 +114,18 @@ def _compute_logsums(
             f"{trace_label} compute_logsums for {choosers.shape[0]} choosers {alt_tdd.shape[0]} alts"
         )
 
+        # Resolve the purpose-specific destination before lot choice so PNR lot
+        # utilities and the subsequent mode-choice logsums use the same endpoint.
+        destination_for_tour_purpose = model_settings.DESTINATION_FOR_TOUR_PURPOSE
+        if isinstance(destination_for_tour_purpose, str):
+            dest_col_name = destination_for_tour_purpose
+        elif isinstance(destination_for_tour_purpose, dict):
+            dest_col_name = destination_for_tour_purpose.get(tour_purpose)
+        else:
+            raise RuntimeError(
+                f"expected string or dict DESTINATION_FOR_TOUR_PURPOSE model_setting for {tour_purpose}"
+            )
+
         if logsum_settings.include_pnr_for_logsums:
             # if the logsum settings include explicit PNR, then we need to add the
             # PNR lot destination column to the choosers table by running PnR lot choice
@@ -101,22 +135,11 @@ def _compute_logsums(
                 land_use=state.get_dataframe("land_use"),
                 network_los=state.get_injectable("network_los"),
                 model_settings=None,
-                choosers_dest_col_name="destination",
+                choosers_dest_col_name=dest_col_name,
                 choosers_origin_col_name="home_zone_id",
                 estimator=None,
                 pnr_capacity_cls=None,
                 trace_label=tracing.extend_trace_label(trace_label, "pnr_lot_choice"),
-            )
-
-        # set destination column name for skims used in logsums
-        destination_for_tour_purpose = model_settings.DESTINATION_FOR_TOUR_PURPOSE
-        if isinstance(destination_for_tour_purpose, str):
-            dest_col_name = destination_for_tour_purpose
-        elif isinstance(destination_for_tour_purpose, dict):
-            dest_col_name = destination_for_tour_purpose.get(tour_purpose)
-        else:
-            raise RuntimeError(
-                f"expected string or dict DESTINATION_FOR_TOUR_PURPOSE model_setting for {tour_purpose}"
             )
 
         skims = setup_skims(
@@ -132,12 +155,6 @@ def _compute_logsums(
         constants = config.get_model_constants(logsum_settings)
         locals_dict = {}
         locals_dict.update(constants)
-
-        if network_los.zone_system == los.THREE_ZONE:
-            # TVPB constants can appear in expressions
-            locals_dict.update(
-                network_los.setting("TVPB_SETTINGS.tour_mode_choice.CONSTANTS")
-            )
 
         locals_dict.update(skims)
 
@@ -807,6 +824,13 @@ def _schedule_tours(
 
     log_alt_losers = state.settings.log_alt_losers
 
+    if state.settings.use_explicit_error_terms:
+        # use full TDD alternatives index to ensure AltsContext spans full range of potential slots
+        tdd_alts = state.get_injectable("tdd_alts")
+        alts_context = AltsContext.from_series(tdd_alts.index)
+    else:
+        alts_context = None
+
     choices = interaction_sample_simulate(
         state,
         tours,
@@ -819,6 +843,7 @@ def _schedule_tours(
         trace_label=tour_trace_label,
         estimator=estimator,
         compute_settings=compute_settings,
+        alts_context=alts_context,
     )
     chunk_sizer.log_df(tour_trace_label, "choices", choices)
 
@@ -916,7 +941,7 @@ def schedule_tours(
     if len(result_list) > 1:
         choices = pd.concat(result_list)
 
-    assert len(choices.index == len(tours.index))
+    assert len(choices.index) == len(tours.index)
 
     return choices
 

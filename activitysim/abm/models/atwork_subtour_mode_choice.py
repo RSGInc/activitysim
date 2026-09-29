@@ -66,22 +66,23 @@ def atwork_subtour_mode_choice(
     constants = {}
     constants.update(model_settings.CONSTANTS)
 
-    if "pnr_zone_id" in subtours_merged.columns:
-        if model_settings.run_atwork_pnr_lot_choice:
-            subtours_merged["pnr_zone_id"] = run_park_and_ride_lot_choice(
-                state,
-                choosers=subtours_merged.copy(),
-                land_use=state.get_dataframe("land_use"),
-                network_los=network_los,
-                model_settings=None,
-                choosers_dest_col_name="destination",
-                choosers_origin_col_name="workplace_zone_id",
-                estimator=None,
-                pnr_capacity_cls=None,
-                trace_label=tracing.extend_trace_label(trace_label, "pnr_lot_choice"),
-            )
-        else:
-            subtours_merged["pnr_zone_id"].fillna(-1, inplace=True)
+    if model_settings.run_atwork_pnr_lot_choice:
+        subtours_merged["pnr_zone_id"] = run_park_and_ride_lot_choice(
+            state,
+            choosers=subtours_merged.copy(),
+            land_use=state.get_dataframe("land_use"),
+            network_los=network_los,
+            model_settings=None,
+            choosers_dest_col_name="destination",
+            choosers_origin_col_name="workplace_zone_id",
+            estimator=None,
+            pnr_capacity_cls=None,
+            trace_label=tracing.extend_trace_label(trace_label, "pnr_lot_choice"),
+        )
+    elif "pnr_zone_id" in subtours_merged.columns:
+        # if the pnr_zone_id column is present in the tours table, fill any
+        # missing values with -1 to indicate no park-and-ride lot choice
+        subtours_merged["pnr_zone_id"].fillna(-1, inplace=True)
 
     # setup skim keys
     skims = setup_skims(
@@ -93,12 +94,6 @@ def atwork_subtour_mode_choice(
         dest_col_name="destination",
         trace_label=trace_label,
     )
-
-    if network_los.zone_system == los.THREE_ZONE:
-        # TVPB constants can appear in expressions
-        constants.update(
-            network_los.setting("TVPB_SETTINGS.tour_mode_choice.CONSTANTS")
-        )
 
     estimator = estimation.manager.begin_estimation(state, "atwork_subtour_mode_choice")
     if estimator:
@@ -122,32 +117,9 @@ def atwork_subtour_mode_choice(
         trace_label=trace_label,
         trace_choice_name="tour_mode_choice",
     )
-
-    # add cached tvpb_logsum tap choices for modes specified in tvpb_mode_path_types
-    if network_los.zone_system == los.THREE_ZONE:
-        tvpb_mode_path_types = model_settings.tvpb_mode_path_types
-        for mode, path_types in tvpb_mode_path_types.items():
-            for direction, skim in zip(
-                ["od", "do"], [skims["tvpb_logsum_odt"], skims["tvpb_logsum_dot"]]
-            ):
-                path_type = path_types[direction]
-                skim_cache = skim.cache[path_type]
-
-                print(f"mode {mode} direction {direction} path_type {path_type}")
-
-                for c in skim_cache:
-                    dest_col = f"{direction}_{c}"
-
-                    if dest_col not in choices_df:
-                        choices_df[dest_col] = (
-                            np.nan
-                            if pd.api.types.is_numeric_dtype(skim_cache[c])
-                            else ""
-                        )
-
-                    choices_df[dest_col].where(
-                        choices_df.tour_mode != mode, skim_cache[c], inplace=True
-                    )
+    
+    if "pnr_zone_id" in subtours_merged:
+        choices_df["pnr_zone_id"] = subtours_merged["pnr_zone_id"]
 
     if estimator:
         estimator.write_choices(choices_df[mode_column_name])
