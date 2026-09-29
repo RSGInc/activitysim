@@ -117,7 +117,7 @@ def atwork_subtour_mode_choice(
         trace_label=trace_label,
         trace_choice_name="tour_mode_choice",
     )
-    
+
     if "pnr_zone_id" in subtours_merged:
         choices_df["pnr_zone_id"] = subtours_merged["pnr_zone_id"]
 
