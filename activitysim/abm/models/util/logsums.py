@@ -334,12 +334,6 @@ def compute_location_choice_logsums(
     )
     locals_dict.update(skims)
 
-    # TVPB constants can appear in expressions
-    if (network_los.zone_system == los.THREE_ZONE) & logsum_settings.use_TVPB_constants:
-        locals_dict.update(
-            network_los.setting("TVPB_SETTINGS.tour_mode_choice.CONSTANTS")
-        )
-
     # - run preprocessor to annotate choosers
     # allow specification of alternate preprocessor for nontour choosers
     preprocessor = model_settings.LOGSUM_PREPROCESSOR
