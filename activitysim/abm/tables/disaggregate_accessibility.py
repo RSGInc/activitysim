@@ -53,8 +53,18 @@ def find_nearest_accessibility_zone(
             all_orig = np.repeat(batch_orig, n_dests)
             all_dest = np.tile(dest_zones, len(batch_orig))
 
+            # Skim names can come in as, e.g. 'SOV_M_DIST__MD' or 'DIST'. Most
+            # models have a simple shortest distance DIST skim that is not time
+            # dependent. Other models have only time-dependent skims
+            # time-dependent skims will have a double underscore in their name
+            # and need to be split into a tuple for lookup.
+            if "__" in model_settings.NEAREST_ZONE_SKIM:
+                skim_name = tuple(model_settings.NEAREST_ZONE_SKIM.split("__"))
+            else:
+                skim_name = model_settings.NEAREST_ZONE_SKIM
+
             # single skim lookup for all pairs in the batch
-            all_dists = skim_dict.lookup(all_orig, all_dest, "DIST")
+            all_dists = skim_dict.lookup(all_orig, all_dest, skim_name)
             dist_matrix = np.asarray(all_dists).reshape(len(batch_orig), n_dests)
 
             # find the index of the nearest destination zone for each origin in the batch
