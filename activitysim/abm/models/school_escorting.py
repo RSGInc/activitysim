@@ -148,7 +148,7 @@ def add_prev_choices_to_choosers(
     stage_alts.columns = stage_alts.columns + "_" + stage
 
     choosers = (
-        choosers.reset_index()
+        choosers
         .merge(
             stage_alts,
             how="left",
