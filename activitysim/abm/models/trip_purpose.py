@@ -343,7 +343,7 @@ def trip_purpose(state: workflow.State, trips: pd.DataFrame) -> None:
 
     trips_df["purpose"] = choices
 
-    if state.is_table("school_escort_trips"):
+    if state.is_table("school_escort_trips") and not estimator:
         # setting purpose for school escort trips
         se_trips_df["purpose"] = reindex(school_escort_trips.purpose, se_trips_df.index)
         # merge trips back together preserving index order

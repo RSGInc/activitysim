@@ -315,7 +315,7 @@ def stop_frequency(
             columns=None,
         )
 
-    if state.is_table("school_escort_trips"):
+    if state.is_table("school_escort_trips") and not estimator:
         school_escort_tours_trips.merge_school_escort_trips_into_pipeline(state)
 
     expressions.annotate_tables(
