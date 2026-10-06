@@ -147,12 +147,20 @@ def add_prev_choices_to_choosers(
     stage_alts = alts.copy()
     stage_alts.columns = stage_alts.columns + "_" + stage
 
-    choosers = choosers.merge(
-        stage_alts,
-        how="left",
-        left_on=escorting_choice,
-        right_index=True,
-    ).set_index("household_id")
+    choosers = (
+        (
+            choosers
+            if choosers.index.name in choosers.columns
+            else choosers.reset_index()
+        )
+        .merge(
+            stage_alts,
+            how="left",
+            left_on=escorting_choice,
+            right_index=True,
+        )
+        .set_index("household_id")
+    )
 
     return choosers
 
