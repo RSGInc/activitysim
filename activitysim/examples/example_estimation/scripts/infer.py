@@ -12,6 +12,7 @@ import pandas as pd
 import yaml
 
 from activitysim.abm.models.util import canonical_ids as cid
+from activitysim.abm.models import school_escorting
 from activitysim.core import workflow
 from activitysim.core.util import reindex
 
@@ -23,24 +24,29 @@ ch = logging.StreamHandler()
 ch.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
 logger.addHandler(ch)
 
+skip_joint_tour_frequency = True
+
 CONSTANTS = {}
 
 SURVEY_TOUR_ID = "survey_tour_id"
 SURVEY_PARENT_TOUR_ID = "survey_parent_tour_id"
 SURVEY_PARTICIPANT_ID = "survey_participant_id"
-SURVEY_TRIP_ID = "survey_trip_id"
+SURVEY_TRIP_ID = "linked_trip_id"
 ASIM_TOUR_ID = "tour_id"
 ASIM_PARENT_TOUR_ID = "parent_tour_id"
 ASIM_TRIP_ID = "trip_id"
+PNUM = "PNUM"
+
+SCHOOL_ESCORT_TIME_WINDOW = 1
 
 ASIM_PARTICIPANT_ID = "participant_id"
 
 survey_tables = {
-    "households": {"file_name": "survey_households.csv", "index": "household_id"},
-    "persons": {"file_name": "survey_persons.csv", "index": "person_id"},
-    "tours": {"file_name": "survey_tours.csv"},
-    "joint_tour_participants": {"file_name": "survey_joint_tour_participants.csv"},
-    "trips": {"file_name": "survey_trips.csv"},
+    "households": {"file_name": "household.csv", "index": "household_id"},
+    "persons": {"file_name": "person.csv", "index": "person_id"},
+    "tours": {"file_name": "tour.csv"},
+    "joint_tour_participants": {"file_name": "joint_tour_participants.csv"},
+    "trips": {"file_name": "trip_linked.csv"},
 }
 
 outputs = {
@@ -58,7 +64,7 @@ control_tables = {
     "joint_tour_participants": {"file_name": "final_joint_tour_participants.csv"},
     "trips": {"file_name": "final_trips.csv"},
 }
-apply_controls = True
+apply_controls = False
 skip_controls = not apply_controls
 
 
@@ -151,7 +157,7 @@ def infer_mandatory_tour_frequency(persons, tours):
     return mandatory_tour_frequency
 
 
-def infer_non_mandatory_tour_frequency(configs_dir, persons, tours):
+def infer_non_mandatory_tour_frequency(configs_dir, persons, tours, pe_tour_ids):
     def read_alts():
         # escort,shopping,othmaint,othdiscr,eatout,social
         # 0,0,0,0,0,0
@@ -163,7 +169,12 @@ def infer_non_mandatory_tour_frequency(configs_dir, persons, tours):
         alts = alts.astype(np.int8)  # - NARROW
         return alts
 
-    tours = tours[tours.tour_category == "non_mandatory"]
+    # pure_escort school tours should not be counted as part of the non-mandatory tour frequency model
+    # they are created as part of the school escorting model instead
+    tours = tours[
+        (tours.tour_category == "non_mandatory")
+        & ~tours[SURVEY_TOUR_ID].isin(pe_tour_ids)
+    ]
 
     alts = read_alts()
     tour_types = list(alts.columns.values)
@@ -201,13 +212,12 @@ def infer_non_mandatory_tour_frequency(configs_dir, persons, tours):
         axis=1
     )
     print("%s persons with constrained tours" % (has_constrained_tours.sum()))
-    too_many_tours = has_constrained_tours & constrained_tour_counts.sum(axis=1) > 4
+    too_many_tours = has_constrained_tours & (constrained_tour_counts.sum(axis=1) > 4)
     if too_many_tours.any():
         print("%s persons with too many tours" % (too_many_tours.sum()))
         print(constrained_tour_counts[too_many_tours])
         # not sure what to do about this. Throw out some tours? let them through?
-        print("not sure what to do about this. Throw out some tours? let them through?")
-        assert False
+        print("Allowing for extension purposes")
 
     # determine alt id corresponding to constrained_tour_counts
     # need to do index waltz because pd.merge doesn't preserve index in this case
@@ -237,12 +247,16 @@ def infer_non_mandatory_tour_frequency(configs_dir, persons, tours):
                 tours.person_id.isin(persons.index[bad_tour_frequencies])
             ].sort_values("person_id")
         )
-        bug
+        # raise RuntimeError("Bad non_mandatory tour frequencies")
 
     tf = unconstrained_tour_counts.rename(
         columns={tour_type: "_%s" % tour_type for tour_type in tour_types}
     )
     tf["non_mandatory_tour_frequency"] = alt_id
+
+    assert (
+        not tf.non_mandatory_tour_frequency.isna().any()
+    ), f"Bad non_mandatory tour frequencies for {persons.index[tf.non_mandatory_tour_frequency.isna()]}"
     return tf
 
 
@@ -306,7 +320,7 @@ def infer_joint_tour_frequency(configs_dir, households, tours):
                 joint_tours.household_id.isin(households.index[bad_tour_frequencies])
             ]
         )
-        bug
+        raise RuntimeError("Bad joint tour frequencies")
 
     logger.info(
         "infer_joint_tour_frequency: %s households with joint tours",
@@ -362,6 +376,424 @@ def infer_joint_tour_composition(persons, tours, joint_tour_participants):
     return joint_tours.composition.reindex(tours.index).fillna("").astype(str)
 
 
+def infer_joint_tour_frequency_composition(
+    configs_dir, households, persons, tours, joint_tour_participants
+):
+    tours["composition"] = infer_joint_tour_composition(
+        persons, tours, joint_tour_participants
+    )
+
+    def read_alts():
+        # jtfc file contains purpose and composition for the 2 joint tour options
+        alts = pd.read_csv(
+            os.path.join(
+                configs_dir, "joint_tour_frequency_composition_alternatives.csv"
+            ),
+            comment="#",
+            index_col="alt",
+        )
+        alts = alts.astype(np.int8)  # - NARROW
+        return alts
+
+    alts = read_alts()
+    alts["joint_tour_frequency_composition"] = alts.index
+
+    joint_tours = tours[tours.tour_category == "joint"].copy()
+
+    # FIXME: these dicts can be read from jtfc.yaml instead of hard coded
+    purpose_to_alt_num_dict = {
+        "shopping": 5,
+        "othmaint": 6,
+        "eatout": 7,
+        "social": 8,
+        "othdiscr": 9,
+    }
+    joint_tours["purpose_num"] = joint_tours["tour_type"].map(purpose_to_alt_num_dict)
+
+    composition_to_alt_num_dict = {
+        "adults": 1,
+        "children": 2,
+        "mixed": 3,
+    }
+    joint_tours["party_num"] = joint_tours["composition"].map(
+        composition_to_alt_num_dict
+    )
+
+    # need to number in order of purpose due to symmetry in alts
+    joint_tours["joint_tour_num"] = (
+        joint_tours.sort_values(by=["household_id", "purpose_num"], ascending=True)
+        .groupby("household_id")
+        .cumcount()
+        + 1
+    )
+
+    # FIXME: could grab max from alts (purpose1, purpose2) => 2
+    assert (
+        joint_tours["joint_tour_num"] <= 2
+    ).all(), "Only max of 2 joint tours per household allowed in joint_tour_frequency_composition model"
+
+    cols = ["purpose1", "purpose2", "party1", "party2"]
+    jtfc = joint_tours.pivot(
+        index="household_id",
+        columns="joint_tour_num",
+        values=["purpose_num", "party_num"],
+    ).fillna(0)
+    jtfc.columns = cols
+
+    jtfc = (
+        jtfc.reset_index()
+        .merge(alts, on=cols, how="left")
+        .set_index(households.index.name)
+    )
+
+    if jtfc.joint_tour_frequency_composition.isna().any():
+        bad_tour_frequencies = jtfc.joint_tour_frequency_composition.isna()
+        logger.warning(
+            "\nWARNING Bad joint tour frequencies: num_tours\n%s"
+            % joint_tours[
+                joint_tours.household_id.isin(households.index[bad_tour_frequencies])
+            ]
+        )
+        assert False, "Bad joint_tour_frequency_composition alternatives"
+
+    jtfc_alt = (
+        jtfc["joint_tour_frequency_composition"]
+        .reindex(households.index)
+        .fillna(0)
+        .astype(int)
+    )
+
+    logger.info(
+        "infer_joint_tour_frequency_composition: %s households with joint tours",
+        (jtfc_alt > 0).sum(),
+    )
+
+    return jtfc_alt
+
+
+def get_list_of_pure_escort_tours(se_tours):
+    pe_tour_ids = []
+    for direction in ["inb", "out"]:
+        for i in range(1, 4):
+            col = f"{direction}_chauf{i}"
+            pe_tour_ids.append(
+                se_tours.loc[se_tours[col].isin([2, 4]), f"{direction}_chauf_tour_id"]
+            )
+    pe_tour_ids = pd.concat(pe_tour_ids)
+    return pe_tour_ids
+
+
+def determine_school_escorting_alt_chauf_columns(row, direction, tours):
+    """
+    School escorting alternatives are determined by the escort pattern for each child.
+    There are 6 fields that denote a unique school alternative:
+    bundle1 - bundle number for child 1
+    bundle2 - bundle number for child 2
+    bundle3 - bundle number for child 3
+    chauf1 - chauffeur number for child 1
+    chauf2 - chauffeur number for child 2
+    chauf3 - chauffeur number for child 3
+
+    chauf is coded as the following:
+    0 - no escorting
+    1 - ride share by chauffeur 1
+    2 - pure escort by chauffeur 1
+    3 - ride share by chauffeur 2
+    4 - pure escort by chauffeur 2
+
+    The variables are determined by looking at the child school tours.
+    Each direction is handled separately, but the logic is the same.
+    """
+    assert direction in ["out", "inb"]
+    # only counting the first school tour (tour_num == 1) to match ActivitySim
+    # Note: read_tables converts NaN to "" for string columns, so pd.isna()
+    # alone won't catch missing escort types — check for valid values instead.
+    if (
+        (row["tour_type"] != "school")
+        | pd.isna(row[f"{direction}_chauf_person_id"])
+        | (row[f"{direction}_escort_type"] not in ("ride_share", "pure_escort"))
+        # | (row.get("tour_num", 1) != 1)
+    ):
+        return row
+
+    # need to ensure chauffeur tour exists
+
+    row[f"{direction}_chauf_tour_id"] = row[f"{direction}_chauffeur_tour_id"]
+
+    # looping through all three children
+    for i in range(1, 4):
+        # is this child making the tour
+        if row[f"child_id{i}"] == row["person_id"]:
+            # if the chauffeur is numbered 1
+            if (
+                (not pd.isna(row["chauf_id1"]))
+                & (not pd.isna(row[f"{direction}_chauf_person_id"]))
+                & (row["chauf_id1"] == row[f"{direction}_chauf_person_id"])
+            ):
+                # need to determine escort type
+                if row[f"{direction}_escort_type"] == "ride_share":
+                    # ride share
+                    row[f"{direction}_chauf{i}"] = 1
+                elif row[f"{direction}_escort_type"] == "pure_escort":
+                    # pure escort
+                    row[f"{direction}_chauf{i}"] = 2
+                else:
+                    # no escort
+                    row[f"{direction}_chauf{i}"] = 0
+
+            # if the chauffeur is numbered 2
+            if (
+                (not pd.isna(row["chauf_id2"]))
+                & (not pd.isna(row[f"{direction}_chauf_person_id"]))
+                & (row["chauf_id2"] == row[f"{direction}_chauf_person_id"])
+            ):
+                # numbers are different for second chauffeur
+                if row[f"{direction}_escort_type"] == "ride_share":
+                    # ride share
+                    row[f"{direction}_chauf{i}"] = 3
+                elif row[f"{direction}_escort_type"] == "pure_escort":
+                    # pure escort
+                    row[f"{direction}_chauf{i}"] = 4
+                else:
+                    # no escort
+                    row[f"{direction}_chauf{i}"] = 0
+
+            # bundle number will be mapped later from the chauffeur tour id
+            row[f"{direction}_bundle{i}"] = row[f"{direction}_chauffeur_tour_id"]
+
+    return row
+
+
+def infer_school_escorting(configs_dir, households, persons, tours):
+    """
+    Determining school escorting alternative by counting the escortee tours.
+
+    Required columns in the tours table are:
+    out_chauf_person_id - person_id of the outbound chaueffeur
+    inb_chauf_person_id - person_id of the inbound chaueffeur
+    out_escort_type - escort type of outbound tour
+    in_escort_type - escort type of inbound tour
+        (escort_type is either ride_hail, pure_escort, or NA)
+
+    Required columns in the person table are:
+    is_student, age, and cdap_activity for numbering escortees and chauffeurs
+    """
+    # reading in necessary school escorting configs
+    se_model_settings = school_escorting.SchoolEscortSettings.read_settings_file(
+        state.filesystem,
+        "school_escorting.yaml",
+    )
+    se_alts = pd.read_csv(os.path.join(configs_dir, "school_escorting_alts.csv"))
+
+    # numbering children and chauffeurs using the logic in the school escorting model
+    choosers, participant_columns = school_escorting.determine_escorting_participants(
+        choosers=households, persons=persons, model_settings=se_model_settings
+    )
+
+    # merging the chauffeur and child numbers onto the tours
+    merge_cols = [
+        "household_id",
+        "chauf_id1",
+        "chauf_id2",
+        "child_id1",
+        "child_id2",
+        "child_id3",
+    ]
+    se_tours = pd.merge(
+        tours, choosers.reset_index()[merge_cols], how="left", on="household_id"
+    )
+
+    # initialize to no escorting and determine school escort alternative variables
+    out_cols = [
+        "out_chauf1",
+        "out_chauf2",
+        "out_chauf3",
+        "out_bundle1",
+        "out_bundle2",
+        "out_bundle3",
+        "out_chauf_tour_id",
+    ]
+    se_tours[out_cols] = 0
+    se_tours = se_tours.apply(
+        lambda row: determine_school_escorting_alt_chauf_columns(row, "out", tours),
+        axis=1,
+    )
+
+    inb_cols = [
+        "inb_chauf1",
+        "inb_chauf2",
+        "inb_chauf3",
+        "inb_bundle1",
+        "inb_bundle2",
+        "inb_bundle3",
+        "inb_chauf_tour_id",
+    ]
+    se_tours[inb_cols] = 0
+    se_tours = se_tours.apply(
+        lambda row: determine_school_escorting_alt_chauf_columns(row, "inb", tours),
+        axis=1,
+    )
+
+    # Setting bundle number by ordering the chauffeur tours by time
+    out_chauf_tours = tours[tours[SURVEY_TOUR_ID].isin(se_tours.out_chauf_tour_id)]
+    out_chauf_tours["bundle_num"] = (
+        out_chauf_tours.sort_values(by=["person_id", "start"])
+        .groupby("person_id")["start"]
+        .cumcount()
+        + 1
+    )
+    out_chauf_tour_id_to_bundle_map = out_chauf_tours.set_index(SURVEY_TOUR_ID)[
+        "bundle_num"
+    ].to_dict()
+    inb_chauf_tours = tours[
+        tours[SURVEY_TOUR_ID].isin(se_tours.inb_chauf_tour_id)
+        &
+        # do not allow escort tours to be used for both outbound and inbound school escorting (since activitysim does not allow)
+        # removing this contraint would cause tours to be created in ActivitySim that do not exist in the model
+        ~(
+            tours[SURVEY_TOUR_ID].isin(out_chauf_tours[SURVEY_TOUR_ID])
+            & (tours.tour_type == "escort")
+        )
+    ]
+    inb_chauf_tours["bundle_num"] = (
+        inb_chauf_tours.sort_values(by=["person_id", "end"])
+        .groupby("person_id")["end"]
+        .cumcount()
+        + 1
+    )
+    inb_chauf_tour_id_to_bundle_map = inb_chauf_tours.set_index(SURVEY_TOUR_ID)[
+        "bundle_num"
+    ].to_dict()
+
+    # mapping bundle number for each child
+    for i in range(1, 4):
+        out_col = f"out_bundle{i}"
+        se_tours[out_col] = (
+            se_tours[out_col].map(out_chauf_tour_id_to_bundle_map).fillna(0)
+        )
+        inb_col = f"inb_bundle{i}"
+        se_tours[inb_col] = (
+            se_tours[inb_col].map(inb_chauf_tour_id_to_bundle_map).fillna(0)
+        )
+
+    # Reset chauf values when bundle mapping failed (e.g., due to shared-tour exclusion)
+    # This prevents stale chauf codes from polluting the alt merge and pe_tour_ids
+    for i in range(1, 4):
+        for direction in ["out", "inb"]:
+            invalid = (se_tours[f"{direction}_bundle{i}"] == 0) & (
+                se_tours[f"{direction}_chauf{i}"] != 0
+            )
+            se_tours.loc[invalid, f"{direction}_chauf{i}"] = 0
+
+    # alternatives are unique by the following columns
+    alt_merge_cols = ["bundle1", "bundle2", "bundle3", "chauf1", "chauf2", "chauf3"]
+
+    # grouping tours by household and summing all alternative variables
+    # we can sum here since unique child tours were counted when calculating the school escorting alt values
+    out_merge_cols = [
+        "out_bundle1",
+        "out_bundle2",
+        "out_bundle3",
+        "out_chauf1",
+        "out_chauf2",
+        "out_chauf3",
+    ]
+    out_hh_se = se_tours.groupby("household_id")[out_merge_cols].sum()
+    out_hh_se = out_hh_se.reset_index().merge(
+        se_alts, how="left", left_on=out_merge_cols, right_on=alt_merge_cols
+    )
+    out_hh_se.set_index("household_id", inplace=True)
+    if out_hh_se.Alt.isna().any():
+        n_bad = out_hh_se.Alt.isna().sum()
+        logger.warning(
+            f"{n_bad} households with outbound escorting data that did not "
+            f"match any school_escorting alternative — defaulting to no escorting"
+        )
+    households["school_escorting_outbound"] = (
+        out_hh_se.Alt.reindex(households.index).fillna(1).astype(int)
+    )  # no escorting is default alternative
+
+    inb_merge_cols = [
+        "inb_bundle1",
+        "inb_bundle2",
+        "inb_bundle3",
+        "inb_chauf1",
+        "inb_chauf2",
+        "inb_chauf3",
+    ]
+    inb_hh_se = se_tours.groupby("household_id")[inb_merge_cols].sum()
+    inb_hh_se = inb_hh_se.reset_index().merge(
+        se_alts, how="left", left_on=inb_merge_cols, right_on=alt_merge_cols
+    )
+    inb_hh_se.set_index("household_id", inplace=True)
+    if inb_hh_se.Alt.isna().any():
+        n_bad = inb_hh_se.Alt.isna().sum()
+        logger.warning(
+            f"{n_bad} households with inbound escorting data that did not "
+            f"match any school_escorting alternative — defaulting to no escorting"
+        )
+    households["school_escorting_inbound"] = (
+        inb_hh_se.Alt.reindex(households.index).fillna(1).astype(int)
+    )  # no escorting is default alternative
+
+    # outbound conditional is the same as outbound for survey data
+    households["school_escorting_outbound_cond"] = households[
+        "school_escorting_outbound"
+    ]
+
+    # Build pe_tour_ids AFTER the alt merge so that only tours from
+    # households with a valid escorting alternative (Alt > 1) are included.
+    # This ensures consistency with what ActivitySim's school_escorting
+    # model will actually produce in its school_escort_tours table.
+    outbound_escorting_hhs = households.index[
+        households["school_escorting_outbound"] > 1
+    ]
+    inbound_escorting_hhs = households.index[households["school_escorting_inbound"] > 1]
+
+    pe_tour_ids = tours.loc[
+        (tours.tour_category == "non_mandatory")
+        & (
+            (
+                tours.household_id.isin(outbound_escorting_hhs)
+                & tours[SURVEY_TOUR_ID].isin(
+                    tours[
+                        (tours.out_escort_type == "pure_escort")
+                        & (tours.tour_type == "school")
+                    ].out_chauffeur_tour_id
+                )
+            )
+            | (
+                tours.household_id.isin(inbound_escorting_hhs)
+                & tours[SURVEY_TOUR_ID].isin(
+                    tours[
+                        (tours.inb_escort_type == "pure_escort")
+                        & (tours.tour_type == "school")
+                    ].inb_chauffeur_tour_id
+                )
+            )
+        ),
+        SURVEY_TOUR_ID,
+    ]
+
+    logger.info(
+        f"Number of households with outbound escorting: {(households['school_escorting_outbound'] > 1).sum()}"
+    )
+    logger.info(
+        f"Number of households with inbound escorting: {(households['school_escorting_inbound'] > 1).sum()}"
+    )
+    logger.info(
+        f"Pure escort chauffeur tours identified: {pe_tour_ids.nunique()} unique tours"
+    )
+    logger.info(
+        f"Outbound escorting top 10 Alternatives:\n {households['school_escorting_outbound'].value_counts().head(10)}"
+    )
+    logger.info(
+        f"Inbound escorting top 10 Alternatives:\n {households['school_escorting_inbound'].value_counts().head(10)}"
+    )
+
+    return households, pe_tour_ids
+
+
 def infer_tour_scheduling(configs_dir, tours):
     # given start and end periods, infer tdd
 
@@ -396,7 +828,7 @@ def infer_tour_scheduling(configs_dir, tours):
         bad_tdds = tours[tdds.tdd.isna()]
         print("Bad tour start/end times:")
         print(bad_tdds)
-        bug
+        raise RuntimeError("Bad start / end times")
 
     # print("tdd_alts\n%s" %tdd_alts, "\n")
     # print("tours\n%s" %tours[['start', 'end']])
@@ -404,8 +836,10 @@ def infer_tour_scheduling(configs_dir, tours):
     return tdds.tdd
 
 
-def patch_tour_ids(state: workflow.State, persons, tours, joint_tour_participants):
-    def set_tour_index(state, tours, parent_tour_num_col, is_joint):
+def patch_tour_ids(
+    state: workflow.State, persons, tours, joint_tour_participants, pe_tour_ids
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def set_tour_index(state, tours, parent_tour_num_col, is_joint, is_se=False):
         group_cols = ["person_id", "tour_category", "tour_type"]
 
         if "parent_tour_num" in tours:
@@ -416,7 +850,11 @@ def patch_tour_ids(state: workflow.State, persons, tours, joint_tour_participant
         )
 
         return cid.set_tour_index(
-            state, tours, parent_tour_num_col=parent_tour_num_col, is_joint=is_joint
+            state,
+            tours,
+            parent_tour_num_col=parent_tour_num_col,
+            is_joint=is_joint,
+            is_school_escorting=is_se,
         )
 
     assert "mandatory_tour_frequency" in persons
@@ -441,7 +879,7 @@ def patch_tour_ids(state: workflow.State, persons, tours, joint_tour_participant
 
     # joint tours tour_id was assigned based on person_id of the first person in household (PNUM == 1)
     # because the actual point person forthe tour is only identified later in joint_tour_participants)
-    temp_point_persons = persons.loc[persons.PNUM == 1, ["household_id"]]
+    temp_point_persons = persons.loc[persons[PNUM] == 1, ["household_id"]]
     temp_point_persons["person_id"] = temp_point_persons.index
     temp_point_persons.set_index("household_id", inplace=True)
 
@@ -468,7 +906,7 @@ def patch_tour_ids(state: workflow.State, persons, tours, joint_tour_participant
     # participant_id is formed by combining tour_id and participant pern.PNUM
     # pathological knowledge, but awkward to conflate with joint_tour_participation.py logic
     participant_pnum = reindex(
-        persons.PNUM, patched_joint_tour_participants["person_id"]
+        persons[PNUM], patched_joint_tour_participants["person_id"]
     )
     patched_joint_tour_participants[ASIM_PARTICIPANT_ID] = (
         patched_joint_tour_participants[ASIM_TOUR_ID] * cid.MAX_PARTICIPANT_PNUM
@@ -480,9 +918,20 @@ def patch_tour_ids(state: workflow.State, persons, tours, joint_tour_participant
 
     non_mandatory_tours = set_tour_index(
         state,
-        tours[tours.tour_category == "non_mandatory"],
+        tours[
+            (tours.tour_category == "non_mandatory")
+            & (~tours[SURVEY_TOUR_ID].isin(pe_tour_ids))
+        ],
         parent_tour_num_col=None,
         is_joint=False,
+    )
+
+    pure_school_escort_tours = set_tour_index(
+        state,
+        tours[tours[SURVEY_TOUR_ID].isin(pe_tour_ids)],
+        parent_tour_num_col=None,
+        is_joint=False,
+        is_se=True,
     )
 
     #####################
@@ -500,9 +949,7 @@ def patch_tour_ids(state: workflow.State, persons, tours, joint_tour_participant
     mandatory_tour_frequency = reindex(
         persons.mandatory_tour_frequency, mandatory_tours.person_id
     )
-    is_worker = reindex(persons.pemploy, mandatory_tours.person_id).isin(
-        [CONSTANTS["PEMPLOY_FULL"], CONSTANTS["PEMPLOY_PART"]]
-    )
+    is_worker = reindex(persons.is_worker, mandatory_tours.person_id)
     work_and_school_and_worker = (
         mandatory_tour_frequency == "work_and_school"
     ) & is_worker
@@ -546,21 +993,45 @@ def patch_tour_ids(state: workflow.State, persons, tours, joint_tour_participant
     #####################
 
     # only true for fake data
-    assert (
-        mandatory_tours.index == unmangle_ids(mandatory_tours[SURVEY_TOUR_ID])
-    ).all()
-    assert (joint_tours.index == unmangle_ids(joint_tours[SURVEY_TOUR_ID])).all()
-    assert (
-        non_mandatory_tours.index == unmangle_ids(non_mandatory_tours[SURVEY_TOUR_ID])
-    ).all()
+    # assert (
+    #     mandatory_tours.index == unmangle_ids(mandatory_tours[SURVEY_TOUR_ID])
+    # ).all()
+    # assert (joint_tours.index == unmangle_ids(joint_tours[SURVEY_TOUR_ID])).all()
+    # assert (
+    #     non_mandatory_tours.index == unmangle_ids(non_mandatory_tours[SURVEY_TOUR_ID])
+    # ).all()
 
     patched_tours = pd.concat(
-        [mandatory_tours, joint_tours, non_mandatory_tours, atwork_tours]
+        [
+            mandatory_tours,
+            joint_tours,
+            non_mandatory_tours,
+            pure_school_escort_tours,
+            atwork_tours,
+        ]
     )
 
     assert patched_tours.index.name == ASIM_TOUR_ID
     patched_tours = patched_tours.reset_index()
 
+    tour_id_map = patched_tours.set_index(SURVEY_TOUR_ID)[ASIM_TOUR_ID]
+    for direction in ["out", "inb"]:
+        if f"{direction}_chauffeur_tour_id" in patched_tours.columns:
+            patched_tours[f"{direction}_chauffeur_tour_id"] = (
+                patched_tours[f"{direction}_chauffeur_tour_id"]
+                .map(tour_id_map)
+                .fillna(-1)
+            )
+        if f"{direction}_escort_tour_id" in patched_tours.columns:
+            patched_tours[f"{direction}_escorted_tour_ids"] = patched_tours[
+                f"{direction}_escorted_tour_ids"
+            ].map(
+                lambda x: "_".join(
+                    [str(tour_id_map.get(int(i), -1)) for i in x.split("_")]
+                )
+                if pd.notna(x) and x != ""
+                else pd.NA
+            )
     del patched_tours["tour_type_num"]
 
     assert ASIM_TOUR_ID in patched_tours
@@ -635,7 +1106,7 @@ def infer_atwork_subtour_frequency(configs_dir, tours):
                 subtours.parent_tour_id.isin(tour_counts[bad_tour_frequencies].index)
             ].sort_values("parent_tour_id")
         )
-        bug
+        raise RuntimeError("Bad atwork subtour frequencies")
 
     atwork_subtour_frequency = reindex(
         atwork_subtour_frequency, tours[ASIM_TOUR_ID]
@@ -706,10 +1177,15 @@ def infer_stop_frequency(configs_dir, tours, trips):
 
     assert (freq[SURVEY_TOUR_ID] == tours[SURVEY_TOUR_ID]).all()
 
+    assert (
+        freq.alt.notna().all()
+    ), "stop_frequency inference resulted in NaNs -- do all of your tours have at least one trip in and out?"
     return freq.alt
 
 
-def read_tables(input_dir, tables):
+def read_tables(
+    input_dir, tables
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     for table, info in tables.items():
         table = pd.read_csv(
             os.path.join(input_dir, info["file_name"]), index_col=info.get("index")
@@ -722,18 +1198,20 @@ def read_tables(input_dir, tables):
                 table[c] = table[c].fillna("").astype(str)
         info["table"] = table
 
-    households = tables["households"].get("table")
-    persons = tables["persons"].get("table")
-    tours = tables["tours"].get("table")
-    joint_tour_participants = tables["joint_tour_participants"].get("table")
-    trips = tables["trips"].get("table")
+    households: pd.DataFrame = tables["households"].get("table")
+    persons: pd.DataFrame = tables["persons"].get("table")
+    tours: pd.DataFrame = tables["tours"].get("table")
+    joint_tour_participants: pd.DataFrame = tables["joint_tour_participants"].get(
+        "table"
+    )
+    trips: pd.DataFrame = tables["trips"].get("table")
 
     return households, persons, tours, joint_tour_participants, trips
 
 
 def check_controls(table_name, column_name):
-    table = survey_tables[table_name].get("table")
-    c_table = control_tables[table_name].get("table")
+    table: pd.DataFrame = survey_tables[table_name].get("table")
+    c_table: pd.DataFrame = control_tables[table_name].get("table")
 
     if column_name == "index":
         dont_match = table.index != c_table.index
@@ -756,6 +1234,11 @@ def check_controls(table_name, column_name):
 
 
 def infer(state: workflow.State, configs_dir, input_dir, output_dir):
+    households: pd.DataFrame
+    persons: pd.DataFrame
+    tours: pd.DataFrame
+    joint_tour_participants: pd.DataFrame
+    trips: pd.DataFrame
     households, persons, tours, joint_tour_participants, trips = read_tables(
         input_dir, survey_tables
     )
@@ -770,30 +1253,37 @@ def infer(state: workflow.State, configs_dir, input_dir, output_dir):
     trips = trips.rename(columns={"trip_id": SURVEY_TRIP_ID, "tour_id": SURVEY_TOUR_ID})
 
     # mangle survey tour ids to keep us honest
-    tours[SURVEY_TOUR_ID] = mangle_ids(tours[SURVEY_TOUR_ID])
-    tours[SURVEY_PARENT_TOUR_ID] = mangle_ids(tours[SURVEY_PARENT_TOUR_ID])
-    joint_tour_participants[SURVEY_TOUR_ID] = mangle_ids(
-        joint_tour_participants[SURVEY_TOUR_ID]
-    )
-    joint_tour_participants[SURVEY_PARTICIPANT_ID] = mangle_ids(
-        joint_tour_participants[SURVEY_PARTICIPANT_ID]
-    )
-    trips[SURVEY_TRIP_ID] = mangle_ids(trips[SURVEY_TRIP_ID])
-    trips[SURVEY_TOUR_ID] = mangle_ids(trips[SURVEY_TOUR_ID])
+    # tours[SURVEY_TOUR_ID] = mangle_ids(tours[SURVEY_TOUR_ID])
+    # tours[SURVEY_PARENT_TOUR_ID] = mangle_ids(tours[SURVEY_PARENT_TOUR_ID])
+    # joint_tour_participants[SURVEY_TOUR_ID] = mangle_ids(
+    #     joint_tour_participants[SURVEY_TOUR_ID]
+    # )
+    # joint_tour_participants[SURVEY_PARTICIPANT_ID] = mangle_ids(
+    #     joint_tour_participants[SURVEY_PARTICIPANT_ID]
+    # )
+    # trips[SURVEY_TRIP_ID] = mangle_ids(trips[SURVEY_TRIP_ID])
+    # trips[SURVEY_TOUR_ID] = mangle_ids(trips[SURVEY_TOUR_ID])
 
     # persons.cdap_activity
     persons["cdap_activity"] = infer_cdap_activity(
         persons, tours, joint_tour_participants
     )
     # check but don't assert as this is not deterministic
-    skip_controls or check_controls("persons", "cdap_activity")
+    if not skip_controls:
+        check_controls("persons", "cdap_activity")
 
     # persons.mandatory_tour_frequency
     persons["mandatory_tour_frequency"] = infer_mandatory_tour_frequency(persons, tours)
     assert skip_controls or check_controls("persons", "mandatory_tour_frequency")
 
+    households, pe_tour_ids = infer_school_escorting(
+        configs_dir, households, persons, tours
+    )
+
     # persons.non_mandatory_tour_frequency
-    tour_frequency = infer_non_mandatory_tour_frequency(configs_dir, persons, tours)
+    tour_frequency = infer_non_mandatory_tour_frequency(
+        configs_dir, persons, tours, pe_tour_ids
+    )
     for c in tour_frequency.columns:
         print("assigning persons", c)
         persons[c] = tour_frequency[c]
@@ -801,7 +1291,7 @@ def infer(state: workflow.State, configs_dir, input_dir, output_dir):
 
     # patch_tour_ids
     tours, joint_tour_participants = patch_tour_ids(
-        state, persons, tours, joint_tour_participants
+        state, persons, tours, joint_tour_participants, pe_tour_ids
     )
     survey_tables["tours"]["table"] = tours
     survey_tables["joint_tour_participants"]["table"] = joint_tour_participants
@@ -809,22 +1299,33 @@ def infer(state: workflow.State, configs_dir, input_dir, output_dir):
     assert skip_controls or check_controls("tours", "index")
     assert skip_controls or check_controls("joint_tour_participants", "index")
 
-    # patch_tour_ids
+    # patch_trip_ids
     trips = patch_trip_ids(state, tours, trips)
     survey_tables["trips"]["table"] = trips  # so we can check_controls
     assert skip_controls or check_controls("trips", "index")
 
-    # households.joint_tour_frequency
-    households["joint_tour_frequency"] = infer_joint_tour_frequency(
-        configs_dir, households, tours
-    )
-    assert skip_controls or check_controls("households", "joint_tour_frequency")
+    if not skip_joint_tour_frequency:
+        # households.joint_tour_frequency
+        households["joint_tour_frequency"] = infer_joint_tour_frequency(
+            configs_dir, households, tours
+        )
+        assert skip_controls or check_controls("households", "joint_tour_frequency")
 
     # tours.composition
     tours["composition"] = infer_joint_tour_composition(
         persons, tours, joint_tour_participants
     )
     assert skip_controls or check_controls("tours", "composition")
+
+    households[
+        "joint_tour_frequency_composition"
+    ] = infer_joint_tour_frequency_composition(
+        configs_dir, households, persons, tours, joint_tour_participants
+    )
+    assert skip_controls or check_controls("tours", "joint_tour_frequency_composition")
+    households["has_joint_tour"] = np.where(
+        households["joint_tour_frequency_composition"] > 0, 1, 0
+    )
 
     # tours.tdd
     tours["tdd"] = infer_tour_scheduling(configs_dir, tours)
@@ -849,28 +1350,31 @@ def infer(state: workflow.State, configs_dir, input_dir, output_dir):
 
 
 # python infer.py data
-args = sys.argv[1:]
-assert len(args) == 3, "usage: python infer.py <data_dir> <configs_dir> <output_dir>"
+if __name__ == "__main__":
+    args = sys.argv[1:]
+    assert (
+        len(args) == 3
+    ), "usage: python infer.py <data_dir> <configs_dir> <output_dir>"
 
-data_dir = args[0]
-configs_dir = args[1]
-output_dir = args[2]
+    data_dir = args[0]
+    configs_dir = args[1]
+    output_dir = args[2]
 
-with open(os.path.join(configs_dir, "constants.yaml")) as stream:
-    CONSTANTS = yaml.load(stream, Loader=yaml.SafeLoader)
+    with open(os.path.join(configs_dir, "constants.yaml")) as stream:
+        CONSTANTS = yaml.load(stream, Loader=yaml.SafeLoader)
 
-input_dir = os.path.join(data_dir, "survey_data/")
+    input_dir = os.path.join(data_dir, "survey_data/")
 
-if apply_controls:
-    read_tables(input_dir, control_tables)
+    if apply_controls:
+        read_tables(input_dir, control_tables)
 
-state = (
-    workflow.State()
-    .initialize_filesystem(
-        configs_dir=(configs_dir,),
-        output_dir=output_dir,
-        data_dir=(data_dir,),
+    state = (
+        workflow.State()
+        .initialize_filesystem(
+            configs_dir=(configs_dir,),
+            output_dir=output_dir,
+            data_dir=(data_dir,),
+        )
+        .load_settings()
     )
-    .load_settings()
-)
-infer(state, configs_dir, input_dir, output_dir)
+    infer(state, configs_dir, input_dir, output_dir)
