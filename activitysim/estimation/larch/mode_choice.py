@@ -34,6 +34,7 @@ def mode_choice_model(
     edb_directory="output/estimation_data_bundle/{name}/",
     return_data=False,
     override_filenames=None,
+    segment_column="tour_type",
 ):
     if override_filenames is None:
         override_filenames = {}
@@ -102,7 +103,7 @@ def mode_choice_model(
 
     if "atwork" not in name:
         for purpose, model in m.items():
-            model.datatree = d.dc.query_cases(f"tour_type=='{purpose}'")
+            model.datatree = d.dc.query_cases(f"{segment_column}=={purpose!r}")
             model.choice_co_code = "override_choice_code"
     else:
         for purpose, model in m.items():
@@ -139,6 +140,9 @@ def tour_mode_choice_model(
         name=name,
         edb_directory=edb_directory,
         return_data=return_data,
+        # University tours retain tour_type='school'; ActivitySim selects
+        # their coefficients using the derived tour_purpose='univ'.
+        segment_column="tour_purpose",
     )
 
 
