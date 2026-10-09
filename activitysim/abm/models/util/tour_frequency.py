@@ -218,6 +218,7 @@ def process_mandatory_tours(
     person_columns = [
         "mandatory_tour_frequency",
         "is_worker",
+        "is_student",
         "school_zone_id",
         "workplace_zone_id",
         "home_zone_id",
@@ -242,7 +243,7 @@ def process_mandatory_tours(
     # swap tour_nums for non-workers so school tour is 1 and work is 2
     work_and_school_and_student = (
         tours_merged.mandatory_tour_frequency == "work_and_school"
-    ) & ~tours_merged.is_worker
+    ) & tours_merged.is_student
 
     tours.tour_num = tours.tour_num.where(
         ~work_and_school_and_student, 3 - tours.tour_num
