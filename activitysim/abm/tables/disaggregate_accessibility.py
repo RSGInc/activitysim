@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def find_nearest_accessibility_zone(
-    state: workflow.State, model_settings, choosers, accessibility_df, method="skims"
+    state: workflow.State, choosers, accessibility_df, method="skims"
 ):
     """
     Matches choosers zone to the nearest accessibility zones.
