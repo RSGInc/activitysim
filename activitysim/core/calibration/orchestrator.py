@@ -8,6 +8,7 @@ from typing import Literal
 
 from activitysim.core import workflow
 
+from .component import _calibrate_component, _preflight_validate_component
 from .component import _calibrate_component
 from .execution import (
     _prep_model_data,
@@ -21,6 +22,7 @@ from .recovery import (
     _write_completed_progress,
     _write_progress,
 )
+from .report_html import write_calibration_report
 from .reporting import (
     _ensure_calibration_output_dir,
     _write_component_plots,
@@ -210,6 +212,11 @@ def run_calibration_loop(
         raise ValueError(
             "settings.yaml models list does not include configured calibration "
             f"model(s): {missing_calibration_models}"
+        )
+
+    for component in calibration_settings.run.calibrate_models:
+        _preflight_validate_component(
+            state, component, calibration_settings.model_settings[component]
         )
 
     resume_after = state.settings.resume_after
@@ -592,6 +599,14 @@ def run_calibration_loop(
                         "standard plots could not be written",
                         component,
                     )
+                try:
+                    write_calibration_report(state)
+                except Exception:
+                    logger.exception(
+                        "calibration component %s completed, but the HTML "
+                        "report could not be written",
+                        component,
+                    )
 
                 last_calibrated_component = component
 
@@ -648,6 +663,10 @@ def run_calibration_loop(
                 break
 
         _write_final_coefficients_snapshot(state, calibration_settings)
+        try:
+            write_calibration_report(state)
+        except Exception:
+            logger.exception("final calibration HTML report could not be written")
         _write_completed_progress(
             state,
             completed_global_iterations,

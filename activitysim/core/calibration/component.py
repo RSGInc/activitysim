@@ -363,6 +363,33 @@ def _validate_calibration_coefficients_against_utility_spec(
         )
 
 
+def _preflight_validate_component(
+    state: workflow.State,
+    component_name: str,
+    component_settings: CalibrationComponentSettings,
+) -> None:
+
+    """
+    Fail fast, before any model runs, if a component's calibration spec
+    references coefficients absent from its utility specification.
+    """
+
+    model_settings = state.filesystem.read_model_settings(
+        _resolve_model_settings_file(component_name, component_settings),
+        mandatory=True,
+    )
+
+    calibration_spec_df = _read_calibration_spec(
+        state, component_settings.calibration_spec
+    )
+
+    _validate_calibration_coefficients_against_utility_spec(
+        component_name,
+        calibration_spec_df,
+        _extract_utility_coefficient_names(state, model_settings),
+    )
+
+
 def _ensure_coefficients_exist(
     component_name: str,
     calibration_spec_df: pd.DataFrame,
@@ -534,6 +561,7 @@ def _evaluate_and_update(
                 "model_value": model_value,
                 "difference": difference,
                 "pct_difference": pct_difference,
+                "tolerance": tolerance,
                 "hold_fast": hold_fast,
                 "prev_coefficient": prev_value,
                 "coef_delta": abs_change,
