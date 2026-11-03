@@ -22,6 +22,7 @@ from .recovery import (
     _write_completed_progress,
     _write_progress,
 )
+from .report_html import write_calibration_report
 from .reporting import (
     _ensure_calibration_output_dir,
     _write_component_plots,
@@ -598,6 +599,14 @@ def run_calibration_loop(
                         "standard plots could not be written",
                         component,
                     )
+                try:
+                    write_calibration_report(state)
+                except Exception:
+                    logger.exception(
+                        "calibration component %s completed, but the HTML "
+                        "report could not be written",
+                        component,
+                    )
 
                 last_calibrated_component = component
 
@@ -654,6 +663,10 @@ def run_calibration_loop(
                 break
 
         _write_final_coefficients_snapshot(state, calibration_settings)
+        try:
+            write_calibration_report(state)
+        except Exception:
+            logger.exception("final calibration HTML report could not be written")
         _write_completed_progress(
             state,
             completed_global_iterations,

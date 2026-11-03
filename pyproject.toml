@@ -127,6 +127,7 @@ dev = [
     "nbmake==1.5.5",
     "numexpr",
     "numpydoc",
+    "plotly",  # builds interactive report for calibration
     "pre-commit",
     "pycodestyle",
     "pydata-sphinx-theme",

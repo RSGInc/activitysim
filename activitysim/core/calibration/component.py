@@ -561,6 +561,7 @@ def _evaluate_and_update(
                 "model_value": model_value,
                 "difference": difference,
                 "pct_difference": pct_difference,
+                "tolerance": tolerance,
                 "hold_fast": hold_fast,
                 "prev_coefficient": prev_value,
                 "coef_delta": abs_change,
