@@ -15,6 +15,8 @@ calibration math can evolve independently.
   and loads optional helper modules.
 - `coefficients.py` locates, reads, and writes model coefficient files.
 - `reporting.py` writes iteration histories, summaries, plots, and final snapshots.
+- `report_html.py` writes `output/calibration/calibration_report.html`, a single
+  interactive report with an overview tab and one tab per component.
 - `recovery.py` durably tracks calibration progress. Coefficient files are the
   authoritative current state and are never rolled back when a run resumes.
 - `execution.py` restores pipeline state and dispatches model execution.
@@ -24,6 +26,24 @@ calibration math can evolve independently.
 Component settings may specify `model_settings_file` when a workflow step does
 not follow the conventional `<component_name>.yaml` naming pattern. Components
 that share model settings may point to the same coefficient file.
+
+## Interactive HTML report
+
+After each calibrated component and at the end of a run, calibration writes
+`output/calibration/calibration_report.html`. It is a self-contained file (plotly.js
+is embedded, so it opens offline in any browser) containing:
+
+- an **Overview** tab with per-component convergence status, the worst targets
+  across all components, and max difference per calibration update;
+- one tab per component with a sorted bar chart of `difference / tolerance`
+  (within ±1 means converged), a coefficient-path chart (click the legend to
+  toggle coefficients), the latest-iteration table, and any extra PNGs the
+  component's helper module wrote to its output folder (embedded under
+  "Component diagnostics").
+
+The report requires the `plotly` package (`pip install plotly`). If it is
+not installed the report is skipped with a log message and calibration is
+unaffected. Failures while writing the report are logged and never stop a run.
 
 ## Global iterations, recovery attempts, and `resume_after`
 
