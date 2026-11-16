@@ -308,14 +308,15 @@ def trip_purpose(state: workflow.State, trips: pd.DataFrame) -> None:
 
     trips_df = trips
 
-    if state.is_table("school_escort_trips"):
+    estimator = estimation.manager.begin_estimation(state, "trip_purpose")
+    if state.is_table("school_escort_trips") and not estimator:
         school_escort_trips = state.get_dataframe("school_escort_trips")
-        # separate out school escorting trips to exclude them from the model and estimation data bundle
+        # Only simulation uses modeled escort trips; estimation overrides all
+        # trip purposes from the survey.
         trips_df, se_trips_df, full_trips_index = split_out_school_escorting_trips(
             trips_df, school_escort_trips
         )
 
-    estimator = estimation.manager.begin_estimation(state, "trip_purpose")
     if estimator:
         chooser_cols_for_estimation = [
             "person_id",

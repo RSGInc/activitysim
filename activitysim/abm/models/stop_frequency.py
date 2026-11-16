@@ -261,15 +261,13 @@ def stop_frequency(
 
     # create trips table
     trips = trip.initialize_from_tours(state, tours, stop_frequency_alts)
-    state.add_table("trips", trips)
-    state.tracing.register_traceable_table("trips", trips)
-    state.get_rn_generator().add_channel("trips", trips)
 
     if estimator:
         # make sure they created trips with the expected tour_ids
         columns = ["person_id", "household_id", "tour_id", "outbound"]
 
         survey_trips = estimation.manager.get_survey_table(table_name="trips")
+
         different = False
         # need the check below on household_id incase household_sample_size != 0
         survey_trips_not_in_trips = survey_trips[
@@ -285,6 +283,24 @@ def stop_frequency(
             different = True
         assert not different
 
+        if state.is_table("school_escort_trips"):
+            # Survey stop frequencies already include school-escort stops.
+            # Copy their metadata by final trip_id instead of merging modeled
+            # escort trips, whose stop ordering may differ from the survey.
+            # school_escort_trip_id is only a temporary modeled identifier and
+            # is not needed in survey data.
+            escort_columns = ["escort_participants", "school_escort_direction"]
+            trips = trips.join(
+                survey_trips[escort_columns], how="left", validate="one_to_one"
+            )
+            direction = trips["school_escort_direction"]
+            assert (
+                direction.dropna().isin(["outbound", "inbound"]).all()
+            ), "Invalid school_escort_direction in survey trips"
+            trips["school_escort_direction"] = direction.astype(
+                pd.api.types.CategoricalDtype(["outbound", "inbound"], ordered=False)
+            )
+
         survey_trips = estimation.manager.get_survey_values(
             trips, table_name="trips", column_names=columns
         )
@@ -298,6 +314,10 @@ def stop_frequency(
             print("differing modeled_trips\n%s" % trips[columns][trips_differ])
 
         assert not trips_differ.any()
+
+    state.add_table("trips", trips)
+    state.tracing.register_traceable_table("trips", trips)
+    state.get_rn_generator().add_channel("trips", trips)
 
     if trace_hh_id:
         state.tracing.trace_df(
@@ -316,6 +336,9 @@ def stop_frequency(
         )
 
     if state.is_table("school_escort_trips") and not estimator:
+        # In simulation, replace escorted half-tours with the trips created by
+        # school_escorting. Estimation instead keeps the survey-derived trip
+        # structure and metadata above, without imposing modeled stop ordering.
         school_escort_tours_trips.merge_school_escort_trips_into_pipeline(state)
 
     expressions.annotate_tables(

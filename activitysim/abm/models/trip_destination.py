@@ -1651,14 +1651,14 @@ def trip_destination(
     trips_df = trips
     tours_merged_df = tours_merged
 
-    if state.is_table("school_escort_trips"):
+    estimator = estimation.manager.begin_estimation(state, "trip_destination")
+    if state.is_table("school_escort_trips") and not estimator:
         school_escort_trips = state.get_dataframe("school_escort_trips")
-        # separate out school escorting trips to exclude them from the model and estimation data bundle
+        # Only simulation uses modeled escort trips; estimation overrides all
+        # trip destinations from the survey.
         trips_df, se_trips_df, full_trips_index = split_out_school_escorting_trips(
             trips_df, school_escort_trips
         )
-
-    estimator = estimation.manager.begin_estimation(state, "trip_destination")
 
     if estimator:
         estimator.write_coefficients(file_name=model_settings.COEFFICIENTS)
@@ -1723,7 +1723,7 @@ def trip_destination(
 
         trips_df.drop(columns="failed", inplace=True, errors="ignore")
 
-    if state.is_table("school_escort_trips"):
+    if state.is_table("school_escort_trips") and not estimator:
         # setting destination for school escort trips
         se_trips_df["destination"] = reindex(
             school_escort_trips.destination, se_trips_df.index

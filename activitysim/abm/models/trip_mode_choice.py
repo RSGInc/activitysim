@@ -287,7 +287,8 @@ def trip_mode_choice(
 
     if (
         state.is_table("school_escort_tours")
-        & model_settings.FORCE_ESCORTEE_CHAUFFEUR_MODE_MATCH
+        and model_settings.FORCE_ESCORTEE_CHAUFFEUR_MODE_MATCH
+        and not estimator
     ):
         trips_df = (
             school_escort_tours_trips.force_escortee_trip_modes_to_match_chauffeur(

@@ -522,9 +522,12 @@ def trip_scheduling(
 
     trips_df = trips.copy()
 
-    if state.is_table("school_escort_trips"):
+    # Scheduling is probabilistic: estimation exports choosers and overrides
+    # departure times from the survey rather than estimating coefficients.
+    estimator = estimation.manager.begin_estimation(state, "trip_scheduling")
+    if state.is_table("school_escort_trips") and not estimator:
         school_escort_trips = state.get_dataframe("school_escort_trips")
-        # separate out school escorting trips to exclude them from the model and estimation data bundle
+        # Modeled escort departure times must not replace survey times.
         trips_df, se_trips_df, full_trips_index = split_out_school_escorting_trips(
             trips_df, school_escort_trips
         )
@@ -533,9 +536,6 @@ def trip_scheduling(
     # add columns 'tour_hour', 'earliest', 'latest' to trips
     set_tour_hour(trips_df, tours)
 
-    # trip_scheduling is a probabilistic model ane we don't support estimation,
-    # but we do need to override choices in estimation mode
-    estimator = estimation.manager.begin_estimation(state, "trip_scheduling")
     if estimator:
         estimator.write_spec(model_settings, tag="PROBS_SPEC")
         estimator.write_model_settings(model_settings, model_settings_file_name)
@@ -632,7 +632,7 @@ def trip_scheduling(
 
     trips_df = trips.copy()
 
-    if state.is_table("school_escort_trips"):
+    if state.is_table("school_escort_trips") and not estimator:
         # separate out school escorting trips to exclude them from the model and estimation data bundle
         trips_df, se_trips_df, full_trips_index = split_out_school_escorting_trips(
             trips_df, school_escort_trips
@@ -669,7 +669,7 @@ def trip_scheduling(
 
     trips_df["depart"] = choices
 
-    if state.is_table("school_escort_trips"):
+    if state.is_table("school_escort_trips") and not estimator:
         # setting destination for school escort trips
         se_trips_df["depart"] = reindex(school_escort_trips.depart, se_trips_df.index)
         non_se_trips_df["depart"] = reindex(trips_df.depart, non_se_trips_df.index)
