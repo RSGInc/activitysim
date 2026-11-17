@@ -198,8 +198,8 @@ def process_mandatory_tours(
     persons : DataFrame
         Persons is a DataFrame which has a column call
         mandatory_tour_frequency (which came out of the mandatory tour
-        frequency model) and a column is_worker which indicates the person's
-        worker status.  The only valid values of the mandatory_tour_frequency
+        frequency model), an is_worker column indicating worker status, and an
+        is_student column indicating student status. The only valid values of the mandatory_tour_frequency
         column to take are "work1", "work2", "school1", "school2" and
         "work_and_school"
 
@@ -212,7 +212,8 @@ def process_mandatory_tours(
         column which is set to 1 or 2 depending whether it is the first or
         second mandatory tour made by the person.  The logic for whether the
         work or school tour comes first given a "work_and_school" choice
-        depends on the is_worker column: work tours first for workers, second for non-workers
+        depends on the is_student column: school tours first for students,
+        work tours first for non-students.
     """
 
     person_columns = [
@@ -240,7 +241,7 @@ def process_mandatory_tours(
     )
 
     # by default work tours are first for work_and_school tours
-    # swap tour_nums for non-workers so school tour is 1 and work is 2
+    # swap tour_nums for students so school tour is 1 and work is 2
     work_and_school_and_student = (
         tours_merged.mandatory_tour_frequency == "work_and_school"
     ) & tours_merged.is_student

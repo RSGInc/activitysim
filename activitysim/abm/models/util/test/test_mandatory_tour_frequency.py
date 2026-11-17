@@ -25,12 +25,14 @@ def mandatory_tour_frequency_alternatives():
     return df
 
 
-def test_mtf():
+@pytest.mark.parametrize("working_student", [False, True])
+def test_mtf(working_student):
     state = workflow.State.make_default(__file__)
 
     persons = pd.DataFrame(
         {
             "is_worker": [True, True, False, False],
+            "is_student": [False, working_student, True, True],
             "mandatory_tour_frequency": [
                 "work1",
                 "work_and_school",
@@ -79,10 +81,13 @@ def test_mtf():
             ),
         )
 
-    # tour_nums for work_and_school non-worker should be flipped
+    # Students take school tours first, including students who also work.
+    working_person_tour_nums = [2, 1] if working_student else [1, 2]
     pdt.assert_series_equal(
         mandatory_tours.tour_num,
-        pd.Series([1, 1, 2, 2, 1, 1, 2], index=idx, name="tour_num"),
+        pd.Series(
+            [1, *working_person_tour_nums, 2, 1, 1, 2], index=idx, name="tour_num"
+        ),
         check_dtype=False,
     )
 
